@@ -39,7 +39,7 @@ export function PaperDetailPage({ paper, reviews }: PaperDetailPageProps) {
                   </div>
                   <div>
                     <div className="text-sm font-semibold flex items-center gap-2">
-                      {author.id === 'a1' ? 'Dr. Alan Richards' : author.address.slice(0, 10)}
+                      {author.address.slice(0, 10)}...
                       {author.badges.includes('Top Reviewer Q1') && (
                         <Award className="w-3.5 h-3.5 text-[color:var(--color-primary)]" />
                       )}
@@ -98,17 +98,21 @@ export function PaperDetailPage({ paper, reviews }: PaperDetailPageProps) {
                 </p>
                 <div className="space-y-6 text-zinc-500 leading-relaxed">
                   <p>
-                    In recent years, the acceleration of decentralized protocols has led to a re-evaluation of
-                    consensus mechanisms in large-scale networks. This paper proposes a quantum-entanglement-inspired
-                    synchronization protocol designed to overcome traditional latency bounds in Proof-of-Stake ecosystems.
-                  </p>
-                  <p>
-                    By leveraging a novel topology of validator clusters, we demonstrate that a constant-time
-                    deterministic finality can be achieved without compromising on decentralization metrics. Our
-                    simulations across a 10,000-node Cardano testnet show a 34% improvement in block propagation
-                    efficiency...
+                    Full content preview is not available in this increment. Use the IPFS CID above to retrieve
+                    the canonical paper document.
                   </p>
                 </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'Full Paper' && (
+              <motion.div
+                key="full-paper"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+              >
+                <EmptyState icon={MessageSquare} message="Full paper rendering is not available yet. Open from IPFS CID." />
               </motion.div>
             )}
 
@@ -172,6 +176,17 @@ export function PaperDetailPage({ paper, reviews }: PaperDetailPageProps) {
                 animate={{ opacity: 1, y: 0 }}
               >
                 <EmptyState icon={Gavel} message="No active disputes on this research." />
+              </motion.div>
+            )}
+
+            {activeTab === 'History' && (
+              <motion.div
+                key="history"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+              >
+                <EmptyState icon={Award} message="No version history events found for this paper." />
               </motion.div>
             )}
           </AnimatePresence>

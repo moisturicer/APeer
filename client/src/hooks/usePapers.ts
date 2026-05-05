@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { MOCK_PAPERS } from '@/constants';
 import type { Paper } from '@/types';
 
 export function usePapers() {
@@ -20,10 +19,9 @@ export function usePapers() {
 
       if (res.error) {
         setError(res.error);
-        setPapers(MOCK_PAPERS);
+        setPapers([]);
       } else {
-        const nextPapers = res.data && res.data.length > 0 ? res.data : MOCK_PAPERS;
-        setPapers(nextPapers);
+        setPapers(res.data ?? []);
       }
       setLoading(false);
     }

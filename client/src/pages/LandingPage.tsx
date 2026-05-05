@@ -3,18 +3,14 @@ import {
   ArrowRight, FileText, ShieldCheck, Award, AlertCircle,
   Upload, Gift, Database, Gavel
 } from 'lucide-react';
+import type { Paper } from '../types';
 
 interface LandingPageProps {
+  papers: Paper[];
+  loading?: boolean;
   onExplore: () => void;
   onPublish: () => void;
 }
-
-const STATS = [
-  { label: 'Papers Published',  value: '1,420', icon: FileText },
-  { label: 'Active Reviewers',  value: '458',   icon: ShieldCheck },
-  { label: 'peerA Distributed', value: '2.5M',  icon: Award },
-  { label: 'Open Disputes',     value: '12',    icon: AlertCircle },
-];
 
 const FEATURES = [
   { title: 'Publishing',   desc: 'Secure your research on-chain with IPFS content addressing and permanent timestamps.',                              icon: Upload },
@@ -25,7 +21,20 @@ const FEATURES = [
   { title: 'Governance',   desc: 'The community votes on protocol upgrades, treasury grants, and review standards.',                                 icon: Database },
 ];
 
-export function LandingPage({ onExplore, onPublish }: LandingPageProps) {
+export function LandingPage({ papers, loading = false, onExplore, onPublish }: LandingPageProps) {
+  const uniqueReviewers = new Set(
+    papers.flatMap((paper) => paper.authors.map((author) => author.address)),
+  ).size;
+  const totalPeerA = papers.reduce((sum, paper) => sum + paper.rewardPool, 0);
+  const openDisputes = papers.filter((paper) => paper.status === 'Disputed').length;
+  const statValue = (value: string) => (loading ? '...' : value);
+  const stats = [
+    { label: 'Papers Published', value: statValue(papers.length.toLocaleString()), icon: FileText },
+    { label: 'Active Researchers', value: statValue(uniqueReviewers.toLocaleString()), icon: ShieldCheck },
+    { label: 'peerA Reward Pools', value: statValue(totalPeerA.toLocaleString()), icon: Award },
+    { label: 'Open Disputes', value: statValue(openDisputes.toLocaleString()), icon: AlertCircle },
+  ];
+
   return (
     <div className="pt-32 pb-20 max-w-7xl mx-auto px-6">
       {/* Hero */}
@@ -64,7 +73,7 @@ export function LandingPage({ onExplore, onPublish }: LandingPageProps) {
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-24">
-        {STATS.map((stat, i) => (
+        {stats.map((stat, i) => (
           <motion.div
             key={stat.label}
             initial={{ opacity: 0, y: 20 }}

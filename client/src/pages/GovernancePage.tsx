@@ -2,10 +2,17 @@ import { useState } from 'react';
 import { motion } from 'motion/react';
 import { Database, Lock, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { Badge } from '../components/Badge';
-import { MOCK_PROPOSALS } from '../constants';
 
 export function GovernancePage() {
   const [voted, setVoted] = useState<string[]>([]);
+  const proposals: Array<{
+    id: string;
+    title: string;
+    status: 'Active' | 'Passed' | 'Failed';
+    proposer: string;
+    forPct: number;
+    againstPct: number;
+  }> = [];
 
   const handleVote = (id: string) => {
     if (!voted.includes(id)) setVoted((v) => [...v, id]);
@@ -36,7 +43,13 @@ export function GovernancePage() {
             <Database className="w-3.5 h-3.5" /> Active Proposals
           </h2>
 
-          {MOCK_PROPOSALS.map((prop) => (
+          {proposals.length === 0 && (
+            <div className="p-8 bg-[color:var(--color-surface)] border border-dashed border-[color:var(--color-border)] rounded-2xl text-sm text-zinc-500">
+              No active governance proposals yet.
+            </div>
+          )}
+
+          {proposals.map((prop) => (
             <div
               key={prop.id}
               className="p-8 bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-2xl card-shadow hover:border-[color:var(--color-primary)]/20 transition-all group relative overflow-hidden"

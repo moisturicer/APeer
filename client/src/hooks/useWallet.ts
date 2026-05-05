@@ -34,7 +34,7 @@ export function useWallet() {
       setState(s => ({
         ...s,
         connecting: false,
-        error: e instanceof Error ? e.message : 'Failed to connect wallet',
+        error: toWalletErrorMessage(e),
       }))
     }
   }, [])
@@ -42,6 +42,10 @@ export function useWallet() {
   const disconnect = useCallback(() => {
     setWallet(null)
     setState({ connected: false, connecting: false, address: null, name: null, error: null })
+  }, [])
+
+  const clearError = useCallback(() => {
+    setState(s => ({ ...s, error: null }))
   }, [])
 
   const getAvailableWallets = useCallback(async () => {
@@ -61,7 +65,7 @@ export function useWallet() {
     return entries
   }, [])
 
-  return { ...state, wallet, connect, disconnect, getAvailableWallets }
+  return { ...state, wallet, connect, disconnect, clearError, getAvailableWallets }
 }
 
 interface Cip30Api {
@@ -95,4 +99,23 @@ function isWalletProvider(candidate: unknown): candidate is Cip30Provider {
       'enable' in candidate &&
       typeof (candidate as { enable?: unknown }).enable === 'function',
   )
+}
+
+function toWalletErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return 'Failed to connect wallet. Please try again.';
+  }
+
+  const message = error.message.toLowerCase();
+  if (message.includes('user rejected') || message.includes('declined')) {
+    return 'Wallet connection request was cancelled.';
+  }
+  if (message.includes('not available')) {
+    return 'Selected wallet is unavailable. Open wallet extension and retry.';
+  }
+  if (message.includes('network')) {
+    return 'Wallet network error. Verify extension is unlocked and online.';
+  }
+
+  return error.message;
 }

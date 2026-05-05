@@ -12,7 +12,6 @@ import { SubmitPage }      from './pages/SubmitPage';
 import { GovernancePage }  from './pages/GovernancePage';
 import { usePapers } from './hooks/usePapers';
 import { useWallet } from './hooks/useWallet';
-import { MOCK_REVIEWS } from './constants';
 
 import type { Paper, View } from './types';
 
@@ -31,6 +30,7 @@ export default function App() {
     error,
     connect,
     disconnect,
+    clearError,
     getAvailableWallets,
   } = useWallet();
 
@@ -54,6 +54,16 @@ export default function App() {
     };
   }, [getAvailableWallets]);
 
+  useEffect(() => {
+    if (!error) return;
+    const timeout = globalThis.setTimeout(() => {
+      clearError();
+    }, 6000);
+    return () => {
+      globalThis.clearTimeout(timeout);
+    };
+  }, [error, clearError]);
+
   return (
     <div className="min-h-screen bg-[color:var(--color-background)]">
       <Navbar
@@ -64,6 +74,7 @@ export default function App() {
         wallets={wallets}
         connecting={connecting}
         walletError={error}
+        onClearWalletError={clearError}
         onConnect={connect}
         onDisconnect={disconnect}
         connected={connected}
@@ -87,7 +98,17 @@ export default function App() {
             transition={{ duration: 0.25, ease: 'easeInOut' }}
           >
             <Routes>
-              <Route path="/" element={<LandingPage onExplore={() => navigate('/discover')} onPublish={() => navigate('/submit')} />} />
+              <Route
+                path="/"
+                element={
+                  <LandingPage
+                    papers={papers}
+                    loading={loading}
+                    onExplore={() => navigate('/discover')}
+                    onPublish={() => navigate('/submit')}
+                  />
+                }
+              />
               <Route
                 path="/discover"
                 element={
@@ -98,9 +119,20 @@ export default function App() {
                   />
                 }
               />
-              <Route path="/papers/:paperId" element={<PaperDetailRoute papers={papers} />} />
-              <Route path="/profile" element={<ProfilePage papers={papers} onPublish={() => navigate('/submit')} />} />
-              <Route path="/submit" element={<SubmitPage onComplete={(paper) => navigate(`/papers/${paper.id}`)} />} />
+              <Route path="/papers/:paperId" element={<PaperDetailRoute papers={papers} loading={loading} />} />
+              <Route
+                path="/profile"
+                element={
+                  <ProfilePage
+                    papers={papers}
+                    connected={connected}
+                    walletAddress={address}
+                    walletName={name}
+                    onPublish={() => navigate('/submit')}
+                  />
+                }
+              />
+              <Route path="/submit" element={<SubmitPage onComplete={() => navigate('/discover')} />} />
               <Route path="/governance" element={<GovernancePage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
@@ -113,10 +145,20 @@ export default function App() {
   );
 }
 
-function PaperDetailRoute({ papers }: Readonly<{ papers: Paper[] }>) {
+function PaperDetailRoute({ papers, loading }: Readonly<{ papers: Paper[]; loading: boolean }>) {
   const { paperId } = useParams();
   const navigate = useNavigate();
   const paper = papers.find((entry) => entry.id === paperId);
+
+  if (loading) {
+    return (
+      <div className="pt-24 pb-20 max-w-3xl mx-auto px-6">
+        <div className="p-8 border border-[color:var(--color-border)] bg-[color:var(--color-surface)] rounded-2xl text-center">
+          <p className="text-zinc-500">Loading paper details...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!paper) {
     return (
@@ -135,7 +177,7 @@ function PaperDetailRoute({ papers }: Readonly<{ papers: Paper[] }>) {
     );
   }
 
-  return <PaperDetailPage paper={paper} reviews={MOCK_REVIEWS} />;
+  return <PaperDetailPage paper={paper} reviews={[]} />;
 }
 
 function getViewFromPath(pathname: string): View {

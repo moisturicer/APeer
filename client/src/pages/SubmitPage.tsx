@@ -3,11 +3,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Upload, FileText, ShieldCheck, CheckCircle2, Lock, Wallet, X
 } from 'lucide-react';
-import type { Paper } from '../types';
-import { MOCK_PAPERS } from '../constants';
 
 interface SubmitPageProps {
-  onComplete: (p: Paper) => void;
+  onComplete: () => void;
 }
 
 type ReviewMode = 'Open' | 'Blind';
@@ -51,7 +49,7 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
           </div>
           <h1 className="text-3xl font-bold mb-4">Submission Successful</h1>
           <p className="text-zinc-500 mb-8 leading-relaxed">
-            Your research has been permanently etched onto the Cardano blockchain. Reviewers can now stake ADA to validate your findings.
+            Your research has been prepared for on-chain anchoring. Once backend submission is enabled, this flow will post to IPFS and Cardano.
           </p>
           <div className="bg-zinc-50 rounded-xl p-6 mb-8 text-left space-y-3">
             <div className="flex justify-between text-xs">
@@ -65,10 +63,10 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
           </div>
           <div className="flex flex-col gap-3">
             <button
-              onClick={() => onComplete(MOCK_PAPERS[0])}
+              onClick={onComplete}
               className="w-full py-4 bg-[color:var(--color-primary)] text-white font-bold rounded-xl hover:bg-[color:var(--color-primary-light)] transition-all shadow-lg"
             >
-              View Published Paper
+              Back to Discover
             </button>
             <button
               onClick={() => window.location.reload()}

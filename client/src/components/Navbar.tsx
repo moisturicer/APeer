@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Library, Globe, PlusCircle, Gavel } from 'lucide-react';
+import { Library, Globe, PlusCircle, Gavel, X } from 'lucide-react';
 import type { View } from '../types';
 
 type AvailableWallet = { id: string; name: string; icon: string };
@@ -13,6 +13,7 @@ interface NavbarProps {
   walletName: string | null;
   wallets: AvailableWallet[];
   walletError: string | null;
+  onClearWalletError: () => void;
   onConnect: (walletId: string) => Promise<void>;
   onDisconnect: () => void;
 }
@@ -26,6 +27,7 @@ export function Navbar({
   walletName,
   wallets,
   walletError,
+  onClearWalletError,
   onConnect,
   onDisconnect,
 }: Readonly<NavbarProps>) {
@@ -70,7 +72,8 @@ export function Navbar({
       </div>
 
       {/* Wallet */}
-      <div className="relative flex items-center gap-3">
+      <div className="relative flex flex-col items-end gap-1 max-w-[360px]">
+        <div className="flex items-center gap-3">
         {connected && walletAddress ? (
           <>
             <button
@@ -130,8 +133,26 @@ export function Navbar({
             )}
           </>
         )}
-        {walletError && <p className="absolute -bottom-5 right-0 text-[10px] text-red-500">{walletError}</p>}
-        {connected && walletName && <p className="absolute -bottom-5 right-0 text-[10px] text-zinc-400">{walletName}</p>}
+        </div>
+
+        {walletError && (
+          <div className="max-w-full flex items-start gap-2 text-right text-[11px] leading-4 text-red-600 bg-red-50 border border-red-100 rounded-md px-2 py-1">
+            <p className="break-words">{walletError}</p>
+            <button
+              type="button"
+              onClick={onClearWalletError}
+              className="shrink-0 mt-0.5 text-red-500 hover:text-red-700 transition-colors"
+              aria-label="Dismiss wallet error"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+        {!walletError && connected && walletName && (
+          <p className="max-w-full text-right text-[11px] leading-4 text-zinc-500 bg-zinc-50 border border-zinc-100 rounded-md px-2 py-1">
+            Connected via {walletName}
+          </p>
+        )}
       </div>
     </nav>
   );
