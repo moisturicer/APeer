@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type ChangeEvent, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Upload, FileText, ShieldCheck, CheckCircle2, Lock, Wallet, X
@@ -9,6 +9,7 @@ interface SubmitPageProps {
 }
 
 type ReviewMode = 'Open' | 'Blind';
+type SubmissionStage = 'idle' | 'uploading' | 'anchoring' | 'awaitingSignature';
 
 export function SubmitPage({ onComplete }: SubmitPageProps) {
   const [step, setStep]                   = useState(1);
@@ -17,8 +18,28 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
   const [isSubmitting, setIsSubmitting]   = useState(false);
   const [reviewMode, setReviewMode]       = useState<ReviewMode>('Open');
   const [isSuccess, setIsSuccess]         = useState(false);
+  const [selectedFile, setSelectedFile]   = useState<File | null>(null);
+  const [uploadError, setUploadError]     = useState<string | null>(null);
+  const [isDragActive, setIsDragActive]   = useState(false);
+  const [title, setTitle]                 = useState('');
+  const [abstractSnippet, setAbstractSnippet] = useState('');
+  const [fieldOfStudy, setFieldOfStudy]   = useState('Distributed Systems');
+  const [keywords, setKeywords]           = useState<string[]>(['Cardano', 'UTXO']);
+  const [keywordInput, setKeywordInput]   = useState('');
+  const [autoIncentivizeReviews, setAutoIncentivizeReviews] = useState(true);
+  const [enableDisputeWindow, setEnableDisputeWindow] = useState(true);
+  const [submissionStage, setSubmissionStage] = useState<SubmissionStage>('idle');
+  const [submissionArtifacts, setSubmissionArtifacts] = useState({ txHash: '', cid: '' });
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = () => {
+    if (!selectedFile) {
+      return;
+    }
+
+    setUploadError(null);
+    setUploadProgress(0);
     setIsUploading(true);
     let progress = 0;
     const interval = setInterval(() => {
@@ -31,10 +52,84 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
     }, 200);
   };
 
-  const handleSubmit = () => {
-    setIsSubmitting(true);
-    setTimeout(() => { setIsSubmitting(false); setIsSuccess(true); }, 2500);
+  const handleFileSelection = (file: File | null) => {
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
+
+    if (file.type !== 'application/pdf') {
+      setUploadError('Only PDF files are supported for paper submission.');
+      setSelectedFile(null);
+      return;
+    }
+
+    setUploadError(null);
+    setSelectedFile(file);
   };
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    handleFileSelection(file);
+
+    if (!file || file.type !== 'application/pdf') {
+      event.target.value = '';
+    }
+  };
+
+  const formatFileSize = (sizeInBytes: number) => {
+    if (sizeInBytes < 1024 * 1024) {
+      return `${(sizeInBytes / 1024).toFixed(1)} KB`;
+    }
+    return `${(sizeInBytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  const handleSubmit = () => {
+    setSubmissionError(null);
+    setIsSubmitting(true);
+    setSubmissionStage('uploading');
+
+    // Placeholder pipeline until backend APIs are available.
+    setTimeout(() => {
+      setSubmissionStage('anchoring');
+
+      setTimeout(() => {
+        setSubmissionStage('awaitingSignature');
+
+        setTimeout(() => {
+          const suffix = Date.now().toString(16).slice(-8);
+          setSubmissionArtifacts({
+            txHash: `preprod_tx_${suffix}_placeholder`,
+            cid: `bafy${suffix}placeholdercid`,
+          });
+          setIsSubmitting(false);
+          setSubmissionStage('idle');
+          setIsSuccess(true);
+        }, 900);
+      }, 900);
+    }, 900);
+  };
+
+  const addKeyword = () => {
+    const normalized = keywordInput.trim();
+    if (!normalized) {
+      return;
+    }
+
+    if (!keywords.some((existing) => existing.toLowerCase() === normalized.toLowerCase())) {
+      setKeywords((prev) => [...prev, normalized]);
+    }
+    setKeywordInput('');
+  };
+
+  const removeKeyword = (keyword: string) => {
+    setKeywords((prev) => prev.filter((item) => item !== keyword));
+  };
+
+  const canContinueToProtocols =
+    title.trim().length >= 8 &&
+    abstractSnippet.trim().length >= 20 &&
+    keywords.length > 0;
 
   if (isSuccess) {
     return (
@@ -54,11 +149,11 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
           <div className="bg-zinc-50 rounded-xl p-6 mb-8 text-left space-y-3">
             <div className="flex justify-between text-xs">
               <span className="text-zinc-400 font-bold uppercase tracking-widest">Transaction Hash</span>
-              <span className="font-mono text-[color:var(--color-primary)] select-all">d5f8...e2a9</span>
+                <span className="font-mono text-[color:var(--color-primary)] select-all">{submissionArtifacts.txHash}</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-zinc-400 font-bold uppercase tracking-widest">IPFS Content ID</span>
-              <span className="font-mono text-zinc-600 select-all">QmXoyp...5n2K</span>
+                <span className="font-mono text-zinc-600 select-all">{submissionArtifacts.cid}</span>
             </div>
           </div>
           <div className="flex flex-col gap-3">
@@ -126,16 +221,87 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
             >
               {!isUploading ? (
                 <div
-                  onClick={handleUpload}
-                  className="flex-1 border-2 border-dashed border-zinc-200 rounded-2xl flex flex-col items-center justify-center bg-zinc-50/50 hover:bg-zinc-50 hover:border-[color:var(--color-primary)]/50 transition-all cursor-pointer group"
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setIsDragActive(true);
+                  }}
+                  onDragLeave={(event) => {
+                    event.preventDefault();
+                    setIsDragActive(false);
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setIsDragActive(false);
+                    const droppedFile = event.dataTransfer.files?.[0] ?? null;
+                    handleFileSelection(droppedFile);
+                  }}
+                  className={`flex-1 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center transition-all cursor-pointer group p-8 ${
+                    isDragActive
+                      ? 'border-[color:var(--color-primary)] bg-[color:var(--color-primary)]/5'
+                      : 'border-zinc-200 bg-zinc-50/50 hover:bg-zinc-50 hover:border-[color:var(--color-primary)]/50'
+                  }`}
                 >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
                   <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mb-6 shadow-sm group-hover:scale-110 transition-transform border border-zinc-100">
                     <Upload className="w-8 h-8 text-[color:var(--color-primary)]" />
                   </div>
                   <h3 className="text-xl font-semibold mb-2">Drag & Drop Research PDF</h3>
                   <p className="text-sm text-zinc-400 max-w-xs text-center leading-relaxed">
-                    Once uploaded, we will generate a cryptographic fingerprint (SHA-256) for IPFS addressing.
+                    {isDragActive
+                      ? 'Release to select your paper PDF.'
+                      : 'Once uploaded, we will generate a cryptographic fingerprint (SHA-256) for IPFS addressing.'}
                   </p>
+                  {selectedFile && (
+                    <div className="mt-6 w-full max-w-md rounded-xl border border-[color:var(--color-border)] bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <FileText className="w-5 h-5 text-[color:var(--color-primary)] flex-shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-zinc-900 truncate">{selectedFile.name}</p>
+                            <p className="text-xs text-zinc-400">{formatFileSize(selectedFile.size)}</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedFile(null);
+                            setUploadError(null);
+                            if (fileInputRef.current) {
+                              fileInputRef.current.value = '';
+                            }
+                          }}
+                          className="text-xs font-semibold text-zinc-500 hover:text-zinc-800"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {uploadError && <p className="mt-4 text-xs text-red-500">{uploadError}</p>}
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleUpload();
+                    }}
+                    disabled={!selectedFile}
+                    className={`mt-6 px-8 py-2.5 text-sm font-semibold rounded-xl transition-all shadow-md ${
+                      selectedFile
+                        ? 'bg-[color:var(--color-primary)] text-white hover:bg-[color:var(--color-primary-light)]'
+                        : 'bg-zinc-200 text-zinc-500 cursor-not-allowed shadow-none'
+                    }`}
+                  >
+                    Upload and Continue
+                  </button>
                 </div>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center">
@@ -143,7 +309,9 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
                     <div className="flex justify-between items-end">
                       <div className="space-y-1">
                         <h3 className="text-lg font-semibold">Generating IPFS Hash...</h3>
-                        <p className="text-xs text-zinc-400 font-mono italic">Content: research_framework_v1.pdf</p>
+                        <p className="text-xs text-zinc-400 font-mono italic">
+                          Content: {selectedFile?.name ?? 'research_framework_v1.pdf'}
+                        </p>
                       </div>
                       <span className="text-sm font-bold text-[color:var(--color-primary)]">{uploadProgress}%</span>
                     </div>
@@ -172,15 +340,31 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-6">
                   <FormField label="Research Title">
-                    <input type="text" placeholder="e.g., A Formal Model for Evolving UTXO Ledger State" className="form-input" />
+                    <input
+                      type="text"
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value)}
+                      placeholder="e.g., A Formal Model for Evolving UTXO Ledger State"
+                      className="form-input"
+                    />
                   </FormField>
                   <FormField label="Abstract Snippet">
-                    <textarea rows={5} placeholder="Briefly describe your methodology and conclusions..." className="form-input resize-none" />
+                    <textarea
+                      rows={5}
+                      value={abstractSnippet}
+                      onChange={(event) => setAbstractSnippet(event.target.value)}
+                      placeholder="Briefly describe your methodology and conclusions..."
+                      className="form-input resize-none"
+                    />
                   </FormField>
                 </div>
                 <div className="space-y-6">
                   <FormField label="Field of Study">
-                    <select className="form-input appearance-none cursor-pointer">
+                    <select
+                      className="form-input appearance-none cursor-pointer"
+                      value={fieldOfStudy}
+                      onChange={(event) => setFieldOfStudy(event.target.value)}
+                    >
                       <option>Distributed Systems</option>
                       <option>Cryptography</option>
                       <option>Macroeconomics</option>
@@ -204,12 +388,28 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
                   </FormField>
                   <FormField label="Keywords">
                     <div className="flex flex-wrap gap-2 p-2 border border-[color:var(--color-border)] rounded-xl bg-zinc-50">
-                      {['Cardano', 'Haskell', 'UTXO'].map((t) => (
+                      {keywords.map((t) => (
                         <span key={t} className="px-2 py-1 bg-white border border-[color:var(--color-border)] rounded text-[10px] font-bold text-zinc-600 flex items-center gap-1">
-                          {t} <X className="w-3 h-3 text-zinc-300" />
+                          {t}
+                          <button type="button" onClick={() => removeKeyword(t)} className="flex">
+                            <X className="w-3 h-3 text-zinc-300 hover:text-zinc-500" />
+                          </button>
                         </span>
                       ))}
-                      <input type="text" className="bg-transparent border-none focus:ring-0 text-xs flex-1 min-w-[50px]" placeholder="Add..." />
+                      <input
+                        type="text"
+                        value={keywordInput}
+                        onChange={(event) => setKeywordInput(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            addKeyword();
+                          }
+                        }}
+                        onBlur={addKeyword}
+                        className="bg-transparent border-none focus:ring-0 text-xs flex-1 min-w-[50px]"
+                        placeholder="Add..."
+                      />
                     </div>
                   </FormField>
                 </div>
@@ -222,7 +422,12 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
                   <button className="px-6 py-2.5 text-zinc-400 font-semibold text-sm">Save Draft</button>
                   <button
                     onClick={() => setStep(3)}
-                    className="px-8 py-2.5 bg-[color:var(--color-primary)] text-white text-sm font-semibold rounded-xl hover:bg-[color:var(--color-primary-light)] transition-all shadow-md"
+                    disabled={!canContinueToProtocols}
+                    className={`px-8 py-2.5 text-white text-sm font-semibold rounded-xl transition-all shadow-md ${
+                      canContinueToProtocols
+                        ? 'bg-[color:var(--color-primary)] hover:bg-[color:var(--color-primary-light)]'
+                        : 'bg-zinc-300 cursor-not-allowed shadow-none'
+                    }`}
                   >
                     Continue to Protocols
                   </button>
@@ -244,6 +449,10 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
                 <div className="space-y-6">
                   <h3 className="text-lg font-bold text-zinc-900">Pre-Publishing Review</h3>
                   <div className="bg-zinc-50 border border-[color:var(--color-border)] rounded-2xl p-6 space-y-4">
+                    <MetaRow label="Selected Paper" value={selectedFile?.name ?? 'No file selected'} />
+                    <MetaRow label="Title" value={title || 'Untitled research'} />
+                    <MetaRow label="Field" value={fieldOfStudy} />
+                    <MetaRow label="Review Mode" value={reviewMode === 'Open' ? 'Open Review' : 'Blind Review'} />
                     <MetaRow label="Verification Status" value={<span className="text-xs font-semibold text-[color:var(--color-primary)] bg-[color:var(--color-primary)]/10 px-2 py-0.5 rounded uppercase">Ready to sign</span>} />
                     <MetaRow label="Est. Gas (Lovelace)" value="1,842,000 (~1.84 ADA)" mono />
                     <MetaRow label="Min. Review Stake"   value="50 ADA" />
@@ -261,11 +470,18 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
                     <ProtocolOption
                       title="Auto-Incentivize Reviews"
                       desc="Allocate 500 peerA from personal balance to the reward pool."
+                      enabled={autoIncentivizeReviews}
+                      onChange={setAutoIncentivizeReviews}
                     />
                     <ProtocolOption
                       title="Enable Dispute Window"
                       desc="Allow 7 days for community audit before permanent archival."
+                      enabled={enableDisputeWindow}
+                      onChange={setEnableDisputeWindow}
                     />
+                  </div>
+                  <div className="rounded-xl border border-[color:var(--color-border)] bg-zinc-50 p-4 text-xs text-zinc-500">
+                    Backend placeholder: submission API integration will be wired to this final action once server endpoints are available.
                   </div>
                 </div>
               </div>
@@ -275,7 +491,7 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
                 </button>
                 <button
                   onClick={handleSubmit}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !selectedFile}
                   className={`px-12 py-3 bg-[color:var(--color-primary)] text-white font-bold rounded-xl hover:bg-[color:var(--color-primary-light)] transition-all shadow-lg flex items-center justify-center gap-3 min-w-[200px] ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}`}
                 >
                   {isSubmitting ? (
@@ -291,6 +507,7 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
                   )}
                 </button>
               </div>
+              {submissionError && <p className="text-xs text-red-500">{submissionError}</p>}
             </motion.div>
           )}
         </AnimatePresence>
@@ -309,7 +526,9 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
             </div>
             <h3 className="text-xl font-bold mb-2">Wallet Signature Required</h3>
             <p className="text-sm text-zinc-500 mb-8">
-              Please approve the metadata minting transaction in your connected Cardano wallet extension.
+              {submissionStage === 'uploading' && 'Preparing payload for IPFS upload (placeholder)...'}
+              {submissionStage === 'anchoring' && 'Preparing on-chain anchoring transaction (placeholder)...'}
+              {submissionStage === 'awaitingSignature' && 'Please approve the metadata minting transaction in your connected Cardano wallet extension.'}
             </p>
             <div className="flex items-center justify-center gap-4 animate-bounce">
               <div className="w-2 h-2 rounded-full bg-[color:var(--color-primary)]" />
@@ -344,10 +563,15 @@ function MetaRow({ label, value, mono = false }: { label: string; value: React.R
   );
 }
 
-function ProtocolOption({ title, desc }: { title: string; desc: string }) {
+function ProtocolOption({ title, desc, enabled, onChange }: { title: string; desc: string; enabled: boolean; onChange: (checked: boolean) => void }) {
   return (
     <label className="flex items-center gap-4 p-4 border border-[color:var(--color-border)] rounded-2xl hover:bg-zinc-50 cursor-pointer transition-all">
-      <input type="checkbox" defaultChecked className="w-5 h-5 rounded border-zinc-300 text-[color:var(--color-primary)] focus:ring-[color:var(--color-primary)]" />
+      <input
+        type="checkbox"
+        checked={enabled}
+        onChange={(event) => onChange(event.target.checked)}
+        className="w-5 h-5 rounded border-zinc-300 text-[color:var(--color-primary)] focus:ring-[color:var(--color-primary)]"
+      />
       <div className="space-y-1">
         <div className="text-sm font-bold text-zinc-800">{title}</div>
         <div className="text-[11px] text-zinc-400 leading-tight">{desc}</div>

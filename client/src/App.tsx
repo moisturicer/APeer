@@ -65,7 +65,7 @@ export default function App() {
   }, [error, clearError]);
 
   return (
-    <div className="min-h-screen bg-[color:var(--color-background)]">
+    <div className="min-h-screen bg-[color:var(--color-background)] flex flex-col">
       <Navbar
         activeView={view}
         setView={(next) => navigate(pathFromView(next))}
@@ -80,7 +80,7 @@ export default function App() {
         connected={connected}
       />
 
-      <main className="relative overflow-hidden">
+      <main className="relative overflow-hidden flex-1">
         {/* Ambient glow on landing */}
         {location.pathname === '/' && (
           <div className="absolute top-0 left-0 right-0 h-[600px] pointer-events-none overflow-hidden">
