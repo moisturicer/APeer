@@ -148,11 +148,6 @@ export function Navbar({
             </button>
           </div>
         )}
-        {!walletError && connected && walletName && (
-          <p className="max-w-full text-right text-[11px] leading-4 text-zinc-500 bg-zinc-50 border border-zinc-100 rounded-md px-2 py-1">
-            Connected via {walletName}
-          </p>
-        )}
       </div>
     </nav>
   );
