@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-primary: #0F6E56;
+  --color-primary-light: #1D9E75;
+  --color-accent: #BA7517;
+  --color-surface: #FFFFFF;
+  --color-background: #F8F9FA;
+  --color-border: #E5E7EB;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-background);
+  color: #18181b;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.card-shadow {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+}
+
+.text-sentence {
+  text-transform: lowercase;
+}
+.text-sentence::first-letter {
+  text-transform: uppercase;
+}
+
+/* Form inputs shared style */
+.form-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: #fafafa;
+  border: 1px solid #e4e4e7;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+.form-input:focus {
+  border-color: color-mix(in srgb, var(--color-primary) 30%, #ffffff);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary) 8%, transparent);
+  outline: none;
+}
