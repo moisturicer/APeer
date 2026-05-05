@@ -1,0 +1,21 @@
+{
+  "name": "@apeer/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "start": "bun dist/index.js",
+    "lint": "bunx tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@blockfrost/blockfrost-js": "^5.5.0",
+    "hono": "^4.4.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.4.5"
+  }
+}
