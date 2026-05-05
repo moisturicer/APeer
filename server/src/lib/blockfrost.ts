@@ -5,14 +5,13 @@ const NETWORK = 'preprod'
 
 const projectId = process.env.BLOCKFROST_PROJECT_ID
 
-if (!projectId || projectId === 'preprodYOUR_KEY_HERE') {
+if (!projectId) {
   console.warn(
     '[blockfrost] WARNING: BLOCKFROST_PROJECT_ID is not set or is still the placeholder.\n' +
     '  Copy server/.env.example → server/.env and add your Blockfrost preprod key.\n' +
     '  Get one free at https://blockfrost.io'
   )
 }
-
 export const blockfrost = new BlockFrostAPI({
   projectId: projectId ?? '',
   network: NETWORK,
