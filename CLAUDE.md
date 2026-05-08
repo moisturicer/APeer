@@ -45,7 +45,7 @@ Only use these. Do not introduce alternatives without team discussion.
 | Blockchain | Cardano | Preprod testnet for dev, Mainnet for launch |
 | Smart Contracts | Aiken | Compiles to Plutus; do not write raw Plutus |
 | Token | peerA | Cardano native token — not an ERC-20 |
-| Storage | IPFS (Kubo / web3.storage) | Content-addressed, immutable |
+| Storage | IPFS (Pinata) | Content-addressed, immutable |
 | On-chain Anchoring | CIP-25 / CIP-68 metadata | Timestamps IPFS CID on-chain via NFT mint |
 | Frontend | React 18 + TypeScript + Vite | No Next.js, no Remix |
 | Wallet | CIP-30 via Mesh.js | Supports Eternl, Nami, Lace, Flint |
@@ -134,9 +134,8 @@ PORT=3000
 NODE_ENV=development
 
 # Increment 2+
-WEB3_STORAGE_TOKEN=<token>
-PINATA_JWT=<jwt>                          # fallback if web3.storage fails
-IPFS_PROVIDER=web3storage                 # 'web3storage' | 'pinata'
+PINATA_JWT=<jwt>
+IPFS_PROVIDER=pinata
 IPFS_GATEWAY_URL=https://ipfs.io/ipfs    # default
 MAX_PAPER_SIZE_MB=50                      # default
 DATABASE_PATH=./data/apeer.db             # default

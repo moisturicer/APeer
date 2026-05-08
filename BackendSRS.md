@@ -10,7 +10,7 @@
 The APeer backend is a thin API bridge. Its responsibilities are:
 
 - Proxying and transforming Blockfrost queries so the frontend never holds a Blockfrost project key
-- Receiving paper submissions, uploading files to IPFS, and pinning them via a pinning service (web3.storage or Pinata)
+- Receiving paper submissions, uploading files to IPFS, and pinning them via Pinata
 - Returning the IPFS CID to the frontend so the frontend can build and sign the on-chain anchoring transaction locally
 - Maintaining an off-chain index of papers and reviews that would be too expensive to reconstruct from chain queries on every request
 - Verifying CIP-30 wallet signatures on write endpoints so only the address owner can submit or review
@@ -420,16 +420,15 @@ Where `Review` matches `client/src/types.ts`:
 ### 3.1 Upload flow
 
 1. Frontend POSTs a PDF to `POST /api/papers` as `multipart/form-data`.
-2. Backend streams the file to the configured pinning service (web3.storage or Pinata — controlled by `IPFS_PROVIDER` env var).
+2. Backend streams the file to Pinata via the Pinata API (`PINATA_JWT` env var).
 3. Pinning service returns a CIDv1.
 4. Backend confirms the pin is queued/active before responding.
 5. Backend returns the CID to the frontend in `201` response.
 
 ### 3.2 Pinning strategy
 
-- **Primary:** web3.storage (`WEB3_STORAGE_TOKEN` env var). Use the `/upload` CAR endpoint.
-- **Fallback:** Pinata (`PINATA_JWT` env var). If web3.storage upload fails after 2 retries, fall back to Pinata.
-- **Retry policy:** 2 retries with 2-second backoff on transient errors (5xx from pinning service). Hard fail on 4xx (bad payload).
+- **Provider:** Pinata (`PINATA_JWT` env var). Use the Pinata REST API (`/pinning/pinFileToIPFS`).
+- **Retry policy:** 2 retries with 2-second backoff on transient errors (5xx from Pinata). Hard fail on 4xx (bad payload).
 - Do not return a CID to the frontend unless the pin is confirmed. A CID that is not pinned will disappear.
 
 ### 3.3 File validation
@@ -646,9 +645,8 @@ Never include stack traces or internal Blockfrost error details in error respons
 | `BLOCKFROST_PROJECT_ID` | Yes | Must begin with `preprod` in dev |
 | `PORT` | No | Default `3000` |
 | `NODE_ENV` | No | `development` \| `production` |
-| `WEB3_STORAGE_TOKEN` | Increment 2 | web3.storage API token |
-| `PINATA_JWT` | Increment 2 | Pinata fallback; optional if web3.storage is primary |
-| `IPFS_PROVIDER` | Increment 2 | `'web3storage'` \| `'pinata'`; default `'web3storage'` |
+| `PINATA_JWT` | Increment 2 | Pinata API JWT for IPFS pinning |
+| `IPFS_PROVIDER` | Increment 2 | `'pinata'` (only supported value) |
 | `IPFS_GATEWAY_URL` | No | Default `https://ipfs.io/ipfs` |
 | `MAX_PAPER_SIZE_MB` | No | Default `50` |
 | `PEERA_POLICY_ID` | Increment 3 | Cardano native token policy ID for peerA |
@@ -691,7 +689,7 @@ All design decisions for Increment 2 are resolved as of 2026-05-08.
 
 | # | Decision | Resolution |
 |---|---|---|
-| 1 | Pinning provider strategy | web3.storage primary; Pinata fallback after 2 retries |
+| 1 | Pinning provider strategy | Pinata only |
 | 2 | Off-chain data store | SQLite via `bun:sqlite`; no ORM; raw SQL |
 | 3 | `views` counter | Incremented server-side on each `GET /api/papers/:cid` |
 | 4 | Nonce expiry window | 5 minutes |
