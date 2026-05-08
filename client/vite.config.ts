@@ -4,6 +4,7 @@ import wasm from 'vite-plugin-wasm'
 import topLevelAwait from 'vite-plugin-top-level-await'
 import path from 'path'
 import { readdirSync } from 'fs'
+import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
 // libsodium-wrappers-sumo's ESM build does `import "./libsodium-sumo.mjs"` as a
 // relative path, but in Bun's content-addressable store the two packages live in
@@ -26,7 +27,20 @@ function fixLibsodiumSumo(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [wasm(), topLevelAwait(), react(), fixLibsodiumSumo()],
+  plugins: [
+    nodePolyfills({
+      globals: {
+        Buffer: true,
+        global: true,
+        process: true,
+      },
+      protocolImports: true,
+    }),
+    wasm(),
+    topLevelAwait(),
+    react(),
+    fixLibsodiumSumo()
+  ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

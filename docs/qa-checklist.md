@@ -151,3 +151,132 @@ These are not bugs — they are expected gaps to be addressed in later increment
 ---
 
 *Update this document as each Increment 1 step completes.*
+
+---
+
+# Increment 2 — Paper Submission & IPFS Anchoring
+
+**Owner:** QA / Docs | **Last Updated:** 2026-05-08
+
+---
+
+## Prerequisites
+
+- [ ] `server/.env` contains a real `PINATA_JWT`
+- [ ] `server/.env` contains a valid `BLOCKFROST_PROJECT_ID` (starts with `preprod`)
+- [ ] Server running: `bun run dev:server`
+- [ ] Client running: `bun run dev:client`
+- [ ] Cardano testnet wallet installed in browser with some preprod ADA
+
+---
+
+## 1. Auth / Nonce Endpoint
+
+```bash
+curl "http://localhost:3000/api/auth/nonce?address=addr_test1qp3..."
+```
+- [ ] Returns HTTP 200 with `{ success: true, data: { nonce, expiresAt } }`
+- [ ] `expiresAt` is ~5 minutes in the future
+- [ ] Missing `address` param → 400
+- [ ] Invalid address format (not `addr…`/`stake…`) → 400
+- [ ] Rate limit: 11th request within 1 minute from same IP → 429
+
+---
+
+## 2. Paper Submission — Backend Smoke Tests
+
+### POST /api/papers (submit)
+- [ ] Upload a PDF ≤ 50 MB with valid auth fields → 200, `{ cid, pinned: true, sha256, metadataForTx }`
+- [ ] CID appears in Pinata dashboard (Files tab)
+- [ ] `metadataForTx.metadata['721']` contains the correct paper title and IPFS CID
+- [ ] Wrong-address signature (mismatched nonce/address) → 401
+- [ ] Oversized PDF (> 50 MB) → 400
+- [ ] Missing `file` field → 400
+- [ ] Non-PDF file → 400
+- [ ] Reusing an already-consumed nonce → 401
+- [ ] Pinata 5xx simulated (disable JWT temporarily) → error after 3 retries, not a silent fail
+
+### POST /api/papers/:cid/confirm
+- [ ] Valid txHash from a preprod transaction → 200, `confirmationStatus: 'pending_confirmation'`
+- [ ] Non-submitter wallet trying to confirm → 403
+- [ ] Paper already in `pending_confirmation` → 409
+- [ ] Unknown CID → 404
+
+---
+
+## 3. Paper Index & Detail
+
+### GET /api/papers
+- [ ] Returns `{ success: true, data: { papers, total, page, limit } }`
+- [ ] Empty array initially (no confirmed papers yet)
+- [ ] After a paper is confirmed (≥ 3 blocks), it appears in the list
+- [ ] `?tag=Cardano` filters correctly
+- [ ] `?sort=views` returns most-viewed first
+- [ ] `?q=keyword` searches title and abstract
+
+### GET /api/papers/:cid
+- [ ] Returns paper data with `reviews: []`
+- [ ] `views` counter increments on each request
+- [ ] Unknown CID → 404
+
+---
+
+## 4. On-Chain Confirmation Flow
+
+- [ ] After `POST /api/papers/:cid/confirm`, the server begins polling Blockfrost every 10 s
+- [ ] After ≥ 3 blocks (usually ~1 min on preprod), `confirmation_status` flips to `'confirmed'`
+- [ ] Paper appears in `GET /api/papers` only after `confirmation_status = 'confirmed'`
+- [ ] Server restart re-hydrates in-progress confirmation jobs
+
+---
+
+## 5. Frontend — SubmitPage
+
+Start client: `bun run dev:client` → navigate to `/submit`
+
+### Wallet gate
+- [ ] No wallet connected → amber warning banner shown; submit button disabled
+
+### Step 1 — Upload
+- [ ] Clicking the drop zone opens a file picker (PDF only)
+- [ ] Dragging a PDF file onto the drop zone works
+- [ ] Non-PDF file → error message shown
+- [ ] PDF > 50 MB → error message shown
+- [ ] Valid PDF → advances to Step 2
+
+### Step 2 — Metadata
+- [ ] Title and abstract are required; Continue button disabled if either is empty
+- [ ] Keyword chip input: Enter or comma adds a tag; Backspace removes last tag
+- [ ] Review Mode toggle switches between Open and Double-Blind
+- [ ] Authors list shows connected wallet address by default
+
+### Step 3 — Submit
+- [ ] Summary shows file name, title, and review mode
+- [ ] "Submit to Cardano" button disabled when no wallet or no file
+- [ ] Click Submit → two wallet prompts appear in sequence (signature, then tx)
+- [ ] Progress messages update throughout the flow
+- [ ] Wallet overlay appears during both signing steps
+- [ ] On success: shows real CID and txHash (not hardcoded placeholders)
+- [ ] On error: inline error message shown (no crash)
+
+---
+
+## 6. Unit Tests
+
+```bash
+bun test --cwd server
+```
+
+- [ ] `nonces.test.ts`: all 4 cases pass (happy path, expired, reused, wrong address)
+- [ ] `auth.test.ts`: all 3 rejection cases pass without throwing
+- [ ] `papers.test.ts`: all round-trip, filter, paginate, search cases pass
+
+---
+
+## 7. Known Limitations (Increment 2)
+
+- `reviews: []` always returned — review routes come in Increment 3
+- `citations`, `rewardPool` always 0 — Increment 3+
+- `PEERA_POLICY_ID` is a placeholder — no actual NFT minted until Increment 3
+- Tx confirmation polling uses an in-process Map — will be replaced with a proper queue in Increment 3
+- PDF body is buffered in memory up to 50 MB — streaming upload for production is deferred

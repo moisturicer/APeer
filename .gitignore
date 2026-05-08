@@ -38,3 +38,8 @@ contracts/.aiken/
 
 # Test coverage
 coverage/
+
+# SQLite database files
+server/data/
+*.db
+*.db-journal

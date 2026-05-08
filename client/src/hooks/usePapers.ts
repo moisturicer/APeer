@@ -21,7 +21,8 @@ export function usePapers() {
         setError(res.error);
         setPapers([]);
       } else {
-        setPapers(res.data ?? []);
+        // API now returns { papers, total, page, limit }
+        setPapers(res.data?.papers ?? []);
       }
       setLoading(false);
     }
