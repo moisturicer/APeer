@@ -8,7 +8,7 @@ All team members should use this file when starting an AI session on APeer.
 
 ## What APeer Is
 
-APeer is a **decentralized academic publishing platform on Cardano**. Researchers publish papers immutably to IPFS, earn and stake **peerA** tokens through peer review, and build on-chain reputations no institution can revoke. Disputes, grants, and governance are executed automatically via smart contracts. Every paper is freely readable by anyone — no wallet required to read.
+APeer is a **decentralized academic publishing platform on Cardano**. Researchers publish papers immutably to IPFS and earn **peerA** tokens through peer review. Reviewers stake peerA to participate — quality reviews earn rewards, bad-faith reviews get slashed — all executed automatically via smart contracts. Every paper is freely readable by anyone — no wallet required to read.
 
 ---
 
@@ -26,9 +26,9 @@ apeer/
 ├── server/               # Bun + Hono backend API
 │   └── src/
 │       ├── routes/       # API route handlers
-│       ├── middleware/   # Auth, rate-limiting (future)
+│       ├── middleware/   # Auth, rate-limiting
 │       └── lib/          # Blockfrost wrapper, utilities
-├── contracts/            # Aiken smart contracts (Increment 3+)
+├── contracts/            # Aiken smart contracts (Increment 3)
 ├── docs/                 # QA checklists, extended docs
 ├── scripts/              # bootstrap.sh and dev tooling
 └── CLAUDE.md             # This file
@@ -44,10 +44,9 @@ Only use these. Do not introduce alternatives without team discussion.
 |---|---|---|
 | Blockchain | Cardano | Preprod testnet for dev, Mainnet for launch |
 | Smart Contracts | Aiken | Compiles to Plutus; do not write raw Plutus |
-| Governance | CIP-1694 | Native Cardano on-chain governance standard |
 | Token | peerA | Cardano native token — not an ERC-20 |
 | Storage | IPFS (Kubo / web3.storage) | Content-addressed, immutable |
-| On-chain Anchoring | CIP-25 / CIP-68 metadata | Timestamps IPFS CID on-chain |
+| On-chain Anchoring | CIP-25 / CIP-68 metadata | Timestamps IPFS CID on-chain via NFT mint |
 | Frontend | React 18 + TypeScript + Vite | No Next.js, no Remix |
 | Wallet | CIP-30 via Mesh.js | Supports Eternl, Nami, Lace, Flint |
 | Indexer | Blockfrost (primary) | Ogmios + Kupo as fallback |
@@ -68,11 +67,7 @@ Claude should correct any drift from these definitions.
 | **Slashing** | Automatic confiscation of staked peerA for bad-faith behavior |
 | **IPFS CID** | The immutable content hash of a paper stored on IPFS |
 | **On-chain Anchoring** | Writing an IPFS CID into a Cardano transaction as proof of existence |
-| **Reputation Score** | Wallet-linked, on-chain metric — not a centralized score |
-| **Dispute** | A formal challenge to a paper, initiated by staking peerA |
 | **Blind Review** | Review where reviewer identity is hidden from the author |
-| **DAO Treasury** | Smart-contract-held peerA pool, governed by community vote |
-| **Milestone Release** | Grant disbursement in tranches, enforced by smart contract |
 
 ---
 
@@ -88,6 +83,9 @@ If a task would require any of these, flag it and stop — do not build it.
 - AI-assisted review scoring (all judgments are human + community vote)
 - DOI registration or legacy journal integration
 - Native mobile apps (iOS / Android) — responsive web only
+- Dispute system — formal paper challenges and jury voting are post-v1
+- DAO Governance and Treasury — on-chain proposals and voting are post-v1
+- Reputation Scores — aggregated wallet reputation and badges are post-v1
 
 ---
 
@@ -100,11 +98,9 @@ Do not implement features from a future increment unless explicitly asked.
 |---|---|---|
 | 1 | Base UI & Wallet Connection | React scaffold, CIP-30 wallet connect, Blockfrost API, base design |
 | 2 | Paper Submission & IPFS | Upload flow, IPFS pinning, on-chain CID anchoring |
-| 3 | Peer Review & peerA Staking | Review assignment, staking logic, Aiken contracts |
-| 4 | Disputes & DAO Governance | Dispute flow, community jury, CIP-1694 governance |
-| 5 | Reputation & Discovery | Reputation scores, paper discovery, search |
+| 3 | Peer Review & peerA Staking | Review submission, staking logic, Aiken contracts |
 
-**Current increment: 1**
+**Current increment: 2**
 
 ---
 
@@ -136,20 +132,39 @@ Copy from `server/.env.example` and fill in:
 BLOCKFROST_PROJECT_ID=preprod<your_key>   # from blockfrost.io, preprod project
 PORT=3000
 NODE_ENV=development
+
+# Increment 2+
+WEB3_STORAGE_TOKEN=<token>
+PINATA_JWT=<jwt>                          # fallback if web3.storage fails
+IPFS_PROVIDER=web3storage                 # 'web3storage' | 'pinata'
+IPFS_GATEWAY_URL=https://ipfs.io/ipfs    # default
+MAX_PAPER_SIZE_MB=50                      # default
+DATABASE_PATH=./data/apeer.db             # default
+
+# Increment 3+
+PEERA_POLICY_ID=test_peera_policy_000000000000000000000000000000000000000000000000000000
+# ^^^ PLACEHOLDER for dev/testing only — this ID matches no real token.
+# Replace with the deployed Cardano native token policy ID before mainnet.
 ```
 
 Blockfrost keys must start with `preprod` during development.
 
 ---
 
-## API Endpoints (Increment 1)
+## API Endpoints — All Increments
 
-| Method | Path | Status |
-|---|---|---|
-| GET | `/api/health` | Live |
-| GET | `/api/wallet/:address` | Live |
-| GET | `/api/papers` | Stubbed (Increment 2) |
-| GET | `/api/papers/:cid` | Stubbed (Increment 2) |
+| Method | Path | Increment | Status |
+|---|---|---|---|
+| GET | `/api/health` | 1 | Live |
+| GET | `/api/wallet/:address` | 1 | Live |
+| GET | `/api/auth/nonce` | 2 | To implement |
+| GET | `/api/papers` | 2 | Stubbed |
+| GET | `/api/papers/:cid` | 2 | Stubbed |
+| POST | `/api/papers` | 2 | To implement |
+| POST | `/api/papers/:cid/confirm` | 2 | To implement |
+| GET | `/api/papers/:cid/reviews` | 3 | To implement |
+| POST | `/api/papers/:cid/reviews` | 3 | To implement |
+| POST | `/api/reviews/:reviewId/vote` | 3 | To implement |
 
 ---
 
@@ -171,9 +186,9 @@ Blockfrost keys must start with `preprod` during development.
 - All responses follow `{ success: boolean, data?: T, error?: string }`
 - Log Blockfrost errors with context; never swallow them silently
 
-### Aiken (contracts — Increment 3+)
+### Aiken (contracts — Increment 3)
 - One validator per file
-- All slash parameters must be DAO-configurable — no hardcoded values
+- All slash parameters must be configurable — no hardcoded values
 - Every validator needs property-based tests before it touches Preprod
 
 ### Git
@@ -209,7 +224,7 @@ Claude should help the team move fast while keeping the codebase consistent with
 
 ### Never
 - Suggest Ethereum/Solana patterns or libraries — this is Cardano
-- Propose paywalls, SSO, or any out-of-scope v1 feature
+- Propose paywalls, SSO, disputes, governance, reputation, or any other out-of-scope v1 feature
 - Write raw Plutus — use Aiken
 - Use `npm` or `yarn` — always `bun`
 - Introduce a new framework (no Next.js, no Express, no Prisma) without explicit team approval
@@ -218,10 +233,9 @@ Claude should help the team move fast while keeping the codebase consistent with
 
 ## Key Technical Risks to Keep in Mind
 
-1. **Slashing logic correctness** — smart contract bugs here can drain the treasury or harm honest reviewers. Always push for property-based tests and audits before mainnet.
-2. **IPFS link rot** — IPFS does not guarantee permanence. Every paper submission flow must include pinning service integration; the on-chain CID is the recovery anchor.
-3. **Cold start / review participation** — staked review requires peerA. Genesis reviewer allocation and observer review tier are the planned mitigations; don't design flows that assume a liquid token market at launch.
+1. **IPFS link rot** — IPFS does not guarantee permanence. Every paper submission flow must include pinning service integration; the on-chain CID is the recovery anchor.
+2. **Cold start / review participation** — staked review requires peerA. Genesis reviewer allocation and observer review tier are the planned mitigations; don't design flows that assume a liquid token market at launch.
 
 ---
 
-*Keep this file in sync with `APeer_Master_Brief_v1_0.md`. When the brief version bumps, update CLAUDE.md to match.*
+*Keep this file in sync with `APeer_Master_Brief_v1_1.md`. When the brief version bumps, update CLAUDE.md to match.*
