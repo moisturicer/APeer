@@ -156,11 +156,11 @@ Blockfrost keys must start with `preprod` during development.
 |---|---|---|---|
 | GET | `/api/health` | 1 | Live |
 | GET | `/api/wallet/:address` | 1 | Live |
-| GET | `/api/auth/nonce` | 2 | To implement |
-| GET | `/api/papers` | 2 | Stubbed |
-| GET | `/api/papers/:cid` | 2 | Stubbed |
-| POST | `/api/papers` | 2 | To implement |
-| POST | `/api/papers/:cid/confirm` | 2 | To implement |
+| GET | `/api/auth/nonce` | 2 | Live |
+| GET | `/api/papers` | 2 | Live |
+| GET | `/api/papers/:cid` | 2 | Live |
+| POST | `/api/papers` | 2 | Live |
+| POST | `/api/papers/:cid/confirm` | 2 | Live |
 | GET | `/api/papers/:cid/reviews` | 3 | To implement |
 | POST | `/api/papers/:cid/reviews` | 3 | To implement |
 | POST | `/api/reviews/:reviewId/vote` | 3 | To implement |

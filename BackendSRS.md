@@ -129,7 +129,7 @@ HTTP status codes carry semantic meaning: 200 OK, 201 Created, 400 Bad Request, 
 
 #### `GET /api/papers`
 
-**Status:** Stubbed — returns `[]`.
+**Status:** Implemented.
 
 **Purpose:** Return a paginated, filterable list of published papers.
 
@@ -143,7 +143,7 @@ HTTP status codes carry semantic meaning: 200 OK, 201 Created, 400 Bad Request, 
 | `tag` | `string` | — | Filter by tag slug |
 | `author` | `string` | — | Filter by Cardano address |
 | `status` | `'Reviewed' \| 'Under Review' \| 'Awaiting Review'` | — | Filter by paper status |
-| `sort` | `'latest' \| 'most_cited' \| 'highest_reward'` | `'latest'` | Matches DiscoverPage sort options |
+| `sort` | `'date' \| 'views'` | `'date'` | `date` = newest first; `views` = most-viewed first |
 | `q` | `string` | — | Full-text search on title + abstract |
 
 **Response `200`:**
@@ -183,7 +183,7 @@ Where `Paper` matches the type in `client/src/types.ts`:
 
 #### `GET /api/papers/:cid`
 
-**Status:** Stubbed — returns `501`.
+**Status:** Implemented.
 
 **Purpose:** Return full metadata for a single paper by IPFS CID.
 
@@ -210,7 +210,7 @@ Where `Paper` matches the type in `client/src/types.ts`:
 
 #### `POST /api/papers`
 
-**Status:** Not implemented.
+**Status:** Implemented.
 
 **Purpose:** Accept a paper file from the frontend, pin it to IPFS, return the CID so the frontend can anchor it on-chain.
 
@@ -223,29 +223,35 @@ Where `Paper` matches the type in `client/src/types.ts`:
 | `title` | `string` | Yes | |
 | `abstract` | `string` | Yes | |
 | `tags` | `string` (JSON array) | Yes | Parsed server-side |
-| `authors` | `string` (JSON array of addresses) | Yes | Must include submitter's address |
-| `reviewMode` | `'open' \| 'blind'` | Yes | From SubmitPage step 2 |
+| `authors` | `string` (JSON array of addresses) | No | Defaults to `[walletAddress]`; submitter is always prepended |
+| `reviewMode` | `'Open' \| 'Blind'` | No | Defaults to `'Open'` |
 | `walletAddress` | `string` | Yes | Submitting author's Cardano address |
-| `signature` | `string` | Yes | CIP-30 signature over the nonce (see §6) |
 | `nonce` | `string` | Yes | Nonce retrieved from `/api/auth/nonce` |
+| `signature` | `string` | Yes | CIP-30 `signData` signature hex |
+| `key` | `string` | Yes | CIP-30 public key hex (required by `@meshsdk/core` `checkSignature`) |
 
-**Response `201`:**
+**Response `200`:**
 ```typescript
 {
   success: true,
   data: {
     cid: string,            // IPFS CIDv1 of the uploaded PDF
-    pinned: boolean,        // true if pinning service confirmed
+    pinned: boolean,        // true — Pinata confirmed pin before response
+    sha256: string,         // hex SHA-256 of the uploaded file (computed server-side)
     metadataForTx: {        // pre-built CIP-25 metadata for frontend to attach to tx
-      "721": {
-        [policyId: string]: {
-          [assetName: string]: {
-            name: string,
-            description: string,
-            ipfs: string,   // "ipfs://<cid>"
-            authors: string[],
-            tags: string[],
-            reviewMode: string
+      label: '721',
+      metadata: {
+        "721": {
+          [policyId: string]: {
+            [assetName: string]: {  // assetName = first 32 bytes of CID (hex if truncated)
+              name: string | string[],        // chunked if > 64 bytes
+              description: string | string[], // first 128 chars of abstract, chunked
+              authors: (string | string[])[],
+              tags: (string | string[])[],
+              review_mode: 'Open' | 'Blind',
+              ipfs_cid: string | string[],
+              version: '1.0'
+            }
           }
         }
       }
@@ -263,19 +269,20 @@ Where `Paper` matches the type in `client/src/types.ts`:
 
 #### `POST /api/papers/:cid/confirm`
 
-**Status:** Not implemented.
+**Status:** Implemented.
 
 **Purpose:** Record the on-chain tx hash after the frontend successfully submits the anchoring transaction.
 
 **Auth:** Wallet signature required.
 
-**Request body (`application/json`):**
+**Request body (`application/json` or `multipart/form-data`):**
 ```typescript
 {
   txHash: string,       // Cardano transaction hash
   walletAddress: string,
+  nonce: string,
   signature: string,
-  nonce: string
+  key: string           // CIP-30 public key hex
 }
 ```
 
@@ -286,12 +293,16 @@ Where `Paper` matches the type in `client/src/types.ts`:
   data: {
     cid: string,
     txHash: string,
-    status: 'pending_confirmation'  // transitions to 'Awaiting Review' once tx confirmed
+    confirmationStatus: 'pending_confirmation',
+    message: string     // human-readable status message
   }
 }
 ```
 
-**Notes:** The backend should start polling for tx confirmation (see §4.3). Status transitions to `'Awaiting Review'` once `confirmation_depth >= 3` blocks.
+**Notes:**
+- Only the original submitter (authors[0]) may call this endpoint. Returns `403` otherwise.
+- Returns `409` if the paper is already in `pending_confirmation` or `confirmed` state.
+- Starts an in-process polling job (see §4.3). `confirmationStatus` transitions to `'confirmed'` once `confirmation_depth >= 3` blocks, or `'confirmation_timeout'` after 20 minutes.
 
 ---
 
@@ -405,13 +416,13 @@ Where `Review` matches `client/src/types.ts`:
 {
   success: true,
   data: {
-    nonce: string,      // random UUID or hex string
-    expiresAt: string   // ISO 8601, 5 minutes from issuance
+    nonce: string,      // random UUID
+    expiresAt: number   // Unix ms timestamp, 5 minutes from issuance
   }
 }
 ```
 
-**Notes:** Store nonce server-side keyed by address. Invalidate on use or expiry.
+**Notes:** Nonce is persisted in the `auth_nonces` SQLite table keyed by `(address, nonce)`. Expired nonces for the address are purged on each new issuance. Nonce is marked `used = 1` immediately after first successful verification — replay attacks are blocked.
 
 ---
 
@@ -477,7 +488,7 @@ For any flow where the backend must wait for tx confirmation (paper anchoring, s
 - Poll `blockfrost.txs(txHash)` every **10 seconds**.
 - Consider confirmed at `>= 3` block depth: `latestBlock - txBlock >= 3`.
 - Timeout after **20 minutes** (120 polls). Mark the indexed record as `'confirmation_timeout'` and surface this in the paper/review status.
-- `[ASSUMPTION]` Use a lightweight in-process job queue (e.g., a `Map` of pending polls with `setInterval`) for Increment 2. Replace with a proper queue (BullMQ or similar, Bun-compatible) in Increment 3 when staking confirmation is added.
+- **Implemented** in `server/src/lib/txConfirmation.ts` as an in-process `Map` of `setInterval` jobs. On server restart, `rehydrate()` is called at boot to re-register any `pending_confirmation` rows still in the DB. Replace with a proper queue (BullMQ or similar, Bun-compatible) in Increment 3 when staking confirmation is added.
 
 ### 4.4 Caching
 
@@ -485,10 +496,10 @@ Blockfrost has rate limits (5 req/s on free tier, 500 req/s on paid). Cache the 
 
 | Resource | TTL | Strategy |
 |---|---|---|
-| `addresses(address)` | 30 seconds | In-memory LRU, keyed by address |
-| `blocksLatest()` | 20 seconds | Single shared value |
-| `txs(txHash)` confirmed | Indefinite | Once confirmed, cache forever |
-| `txs(txHash)` pending | Do not cache | Must re-poll |
+| `addresses(address)` | 30 seconds | In-memory TTL cache, keyed by address |
+| `blocksLatest()` | 10 seconds | Single shared value |
+| `txs(txHash)` confirmed | 60 seconds | TTL cache — confirmation poller re-queries every 10 s anyway |
+| `txs(txHash)` pending | Do not cache | Must re-poll for fresh block height |
 
 Use an in-memory LRU cache (hand-rolled `Map` with TTL — no external cache dependency for Increments 1–3; revisit for scale).
 
@@ -515,40 +526,42 @@ Use SQLite (via Bun's native `bun:sqlite`) for Increments 2–3. No ORM — raw 
 
 ```sql
 CREATE TABLE papers (
-  cid          TEXT PRIMARY KEY,         -- IPFS CIDv1
-  title        TEXT NOT NULL,
-  abstract     TEXT NOT NULL,
-  authors      TEXT NOT NULL,            -- JSON array of addresses
-  tags         TEXT NOT NULL,            -- JSON array of strings
-  review_mode  TEXT NOT NULL,            -- 'open' | 'blind'
-  status       TEXT NOT NULL DEFAULT 'Awaiting Review',
-  anchor_tx    TEXT,                     -- Cardano tx hash (null until confirmed)
-  anchored_at  TEXT,                     -- ISO 8601 timestamp from tx
-  views        INTEGER NOT NULL DEFAULT 0,
-  citations    INTEGER NOT NULL DEFAULT 0,
-  reward_pool  REAL NOT NULL DEFAULT 0,
-  created_at   TEXT NOT NULL             -- ISO 8601, record insertion time
+  cid                 TEXT PRIMARY KEY,  -- IPFS CIDv1
+  title               TEXT NOT NULL,
+  abstract            TEXT NOT NULL,
+  authors             TEXT NOT NULL,     -- JSON array of wallet addresses
+  tags                TEXT NOT NULL,     -- JSON array of tag strings
+  review_mode         TEXT NOT NULL DEFAULT 'Open',  -- 'Open' | 'Blind'
+  status              TEXT NOT NULL DEFAULT 'Awaiting Review',
+  confirmation_status TEXT NOT NULL DEFAULT 'pending_anchor',
+    -- 'pending_anchor' | 'pending_confirmation' | 'confirmed' | 'confirmation_timeout'
+  tx_hash             TEXT,              -- Cardano tx hash (null until submitter calls /confirm)
+  anchored_at         INTEGER,           -- Unix ms when depth >= 3 confirmed
+  submitted_at        INTEGER NOT NULL,  -- Unix ms, record insertion time
+  views               INTEGER NOT NULL DEFAULT 0,
+  sha256              TEXT NOT NULL      -- hex SHA-256 of the uploaded PDF
 );
 ```
+
+> **Note:** `citations` and `reward_pool` columns are deferred to Increment 3 when on-chain indexing of those values is required. `confirmation_status` was added to track the multi-step anchoring lifecycle beyond the original `anchor_tx` field.
 
 ### 5.2 Reviews
 
 ```sql
 CREATE TABLE reviews (
-  id                  TEXT PRIMARY KEY,  -- UUID
-  paper_cid           TEXT NOT NULL REFERENCES papers(cid),
-  reviewer_address    TEXT NOT NULL,
-  text                TEXT NOT NULL,
-  stake_tx            TEXT NOT NULL,     -- tx hash proving peerA was staked
-  reward_earned       REAL NOT NULL DEFAULT 0,
-  helpful_votes       INTEGER NOT NULL DEFAULT 0,
-  is_slashed          INTEGER NOT NULL DEFAULT 0,  -- boolean
-  created_at          TEXT NOT NULL
+  id               TEXT PRIMARY KEY,  -- UUID
+  paper_cid        TEXT NOT NULL,
+  reviewer_address TEXT NOT NULL,
+  text             TEXT NOT NULL,
+  reward_earned    REAL NOT NULL DEFAULT 0,
+  helpful_votes    INTEGER NOT NULL DEFAULT 0,
+  is_slashed       INTEGER NOT NULL DEFAULT 0,  -- 0 | 1 (boolean)
+  created_at       INTEGER NOT NULL,            -- Unix ms
+  FOREIGN KEY (paper_cid) REFERENCES papers(cid)
 );
-
-CREATE UNIQUE INDEX reviews_paper_reviewer
-  ON reviews(paper_cid, reviewer_address);  -- one review per paper per reviewer
 ```
+
+> **Note:** `stake_tx` column and the unique reviewer-per-paper index are deferred to Increment 3 when staking verification is added.
 
 ### 5.3 Nonces (auth)
 
@@ -556,7 +569,7 @@ CREATE UNIQUE INDEX reviews_paper_reviewer
 CREATE TABLE auth_nonces (
   address    TEXT NOT NULL,
   nonce      TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,  -- Unix ms
   used       INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (address, nonce)
 );
@@ -571,16 +584,16 @@ CREATE TABLE auth_nonces (
 The backend never issues session cookies or JWTs. Authentication is per-request via a signed nonce:
 
 1. Client calls `GET /api/auth/nonce?address=<addr>` and receives a nonce string.
-2. Client passes the nonce to the CIP-30 wallet's `signData(address, nonce)` method.
-3. Client includes `{ walletAddress, nonce, signature }` in every write request body.
-4. Backend verifies the signature using the Cardano address and nonce.
+2. Client passes the nonce to the CIP-30 wallet's `signData(address, nonce)` method, which returns `{ signature, key }`.
+3. Client includes `{ walletAddress, nonce, signature, key }` in every write request body.
+4. Backend verifies the signature using `checkSignature` from `@meshsdk/core`. The payload signed is the nonce UTF-8-encoded as a hex string.
 5. Nonce is marked used immediately after first verification. Replay attacks are blocked.
 
 ### 6.2 Signature verification
 
-Use `@meshsdk/core`'s `verifySignature` (already a project dependency) or a standalone Cardano crypto library. The signing payload must match exactly what the wallet signed — typically the nonce as a hex-encoded UTF-8 string.
+Uses `@meshsdk/core`'s `checkSignature(payload, { key, signature }, address)`. The signing payload is the nonce UTF-8-encoded as a hex string (matching the CIP-30 `signData` convention).
 
-Verification logic lives in `server/src/lib/auth.ts`. A middleware in `server/src/middleware/auth.ts` wraps all wallet-authenticated routes.
+Verification logic lives in `server/src/lib/auth.ts` (`verifyCip30Signature`). The `walletAuth()` middleware in `server/src/middleware/auth.ts` wraps all wallet-authenticated routes and supports both `multipart/form-data` and `application/json` bodies.
 
 ### 6.3 Endpoint access matrix
 
@@ -685,13 +698,19 @@ The following must not be implemented in the backend layer regardless of how tem
 
 ## Confirmed Decisions
 
-All design decisions for Increment 2 are resolved as of 2026-05-08.
+Increment 2 backend fully implemented as of 2026-05-08.
 
 | # | Decision | Resolution |
 |---|---|---|
-| 1 | Pinning provider strategy | Pinata only |
-| 2 | Off-chain data store | SQLite via `bun:sqlite`; no ORM; raw SQL |
+| 1 | Pinning provider strategy | Pinata only; REST API via `PINATA_JWT`; 2 retries on 5xx |
+| 2 | Off-chain data store | SQLite via `bun:sqlite`; no ORM; raw SQL; WAL mode |
 | 3 | `views` counter | Incremented server-side on each `GET /api/papers/:cid` |
-| 4 | Nonce expiry window | 5 minutes |
-| 5 | Max PDF upload size | 50 MB |
-| 6 | peerA policy ID (not yet deployed) | Placeholder policy ID in `.env.example` for dev testing; **must be replaced with real policy ID before mainnet** |
+| 4 | Nonce expiry window | 5 minutes; stored as Unix ms in `auth_nonces` table |
+| 5 | Max PDF upload size | 50 MB (env var `MAX_PAPER_SIZE_MB`) |
+| 6 | peerA policy ID (not yet deployed) | Placeholder 56-hex-char ID in `env.ts` and `.env.example`; **must be replaced with real policy ID before mainnet** |
+| 7 | Auth signature field | CIP-30 `signData` returns both `signature` and `key`; both are required in write request bodies |
+| 8 | `reviewMode` casing | `'Open'` / `'Blind'` (title case) throughout — DB, API, and CIP-25 metadata |
+| 9 | `sort` parameter values | `'date'` (default, newest first) and `'views'` (most-viewed first) |
+| 10 | CIP-25 asset name encoding | First 32 bytes of CID UTF-8; hex-encoded if truncation required |
+| 11 | Confirmation poller rehydration | `rehydrate()` called at boot re-registers all `pending_confirmation` rows into the in-process poller |
+| 12 | CORS in production | Reads `ALLOWED_ORIGIN` env var; falls back to `http://localhost:5173` in dev |
