@@ -46,7 +46,7 @@ apeer/
 | Blockchain | Cardano (Preprod testnet → Mainnet) |
 | Smart Contracts | Aiken |
 | Token | peerA (Cardano native token) |
-| Storage | IPFS via Kubo / web3.storage |
+| Storage | IPFS via Pinata |
 | Frontend | React 18 + TypeScript + Vite |
 | Wallet | CIP-30 via Mesh.js (Eternl, Nami, Lace) |
 | Backend | Bun + Hono |
@@ -140,7 +140,7 @@ If `blockfrost.ok` is `false`, check your `.env` key.
 | `BLOCKFROST_PROJECT_ID` | ✅ Yes | Blockfrost preprod project ID |
 | `PORT` | No (default: 3000) | API server port |
 | `NODE_ENV` | No (default: development) | Runtime environment |
-| `WEB3_STORAGE_TOKEN` | No (Increment 2) | IPFS pinning service token |
+| `PINATA_JWT` | No (Increment 2) | Pinata JWT for IPFS pinning |
 
 See `server/.env.example` for the full template.
 

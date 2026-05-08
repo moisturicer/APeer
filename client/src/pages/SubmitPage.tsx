@@ -1,42 +1,107 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Upload, FileText, ShieldCheck, CheckCircle2, Lock, Wallet, X
+  Upload, FileText, ShieldCheck, CheckCircle2, Lock, Wallet, X, AlertCircle
 } from 'lucide-react';
+import { useWallet } from '@/hooks/useWallet';
+import { useSubmitPaper } from '@/hooks/useSubmitPaper';
+import type { ReviewMode } from '@/types';
+
+const MAX_FILE_MB = 50;
 
 interface SubmitPageProps {
   onComplete: () => void;
 }
 
-type ReviewMode = 'Open' | 'Blind';
-
 export function SubmitPage({ onComplete }: SubmitPageProps) {
-  const [step, setStep]                   = useState(1);
-  const [isUploading, setIsUploading]     = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [isSubmitting, setIsSubmitting]   = useState(false);
-  const [reviewMode, setReviewMode]       = useState<ReviewMode>('Open');
-  const [isSuccess, setIsSuccess]         = useState(false);
+  const { connected, address, name: walletName } = useWallet();
 
-  const handleUpload = () => {
-    setIsUploading(true);
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += 10;
-      setUploadProgress(progress);
-      if (progress >= 100) {
-        clearInterval(interval);
-        setTimeout(() => { setIsUploading(false); setStep(2); }, 500);
-      }
-    }, 200);
-  };
+  const { state, progress, error: submitError, cid, txHash, submit, reset } = useSubmitPaper(walletName);
 
-  const handleSubmit = () => {
-    setIsSubmitting(true);
-    setTimeout(() => { setIsSubmitting(false); setIsSuccess(true); }, 2500);
-  };
+  const [step, setStep]             = useState(1);
+  const [file, setFile]             = useState<File | null>(null);
+  const [dragOver, setDragOver]     = useState(false);
+  const [fileError, setFileError]   = useState<string | null>(null);
+  const [title, setTitle]           = useState('');
+  const [abstract, setAbstract]     = useState('');
+  const [reviewMode, setReviewMode] = useState<ReviewMode>('Open');
+  const [tags, setTags]             = useState<string[]>([]);
+  const [tagInput, setTagInput]     = useState('');
+  const [authors, setAuthors]       = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  if (isSuccess) {
+  // Seed authors from connected wallet when first entering step 2
+  const initAuthors = useCallback(() => {
+    if (address && authors.length === 0) setAuthors([address]);
+  }, [address, authors.length]);
+
+  // ── File handling ────────────────────────────────────────────────────────────
+
+  function validateAndSetFile(f: File) {
+    setFileError(null);
+    if (!f.type.includes('pdf')) {
+      setFileError('Only PDF files are accepted.');
+      return;
+    }
+    if (f.size > MAX_FILE_MB * 1024 * 1024) {
+      setFileError(`File exceeds ${MAX_FILE_MB} MB limit.`);
+      return;
+    }
+    setFile(f);
+    setStep(2);
+    initAuthors();
+  }
+
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (f) validateAndSetFile(f);
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragOver(false);
+    const f = e.dataTransfer.files[0];
+    if (f) validateAndSetFile(f);
+  }
+
+  // ── Tags ─────────────────────────────────────────────────────────────────────
+
+  function addTag(raw: string) {
+    const tag = raw.trim();
+    if (tag && !tags.includes(tag)) setTags(t => [...t, tag]);
+    setTagInput('');
+  }
+
+  function handleTagKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addTag(tagInput);
+    }
+    if (e.key === 'Backspace' && !tagInput && tags.length > 0) {
+      setTags(t => t.slice(0, -1));
+    }
+  }
+
+  // ── Submit ───────────────────────────────────────────────────────────────────
+
+  function handleSubmit() {
+    if (!file || !connected || !address) return;
+    void submit(
+      {
+        file,
+        title,
+        abstract,
+        authors: authors.length > 0 ? authors : [address],
+        tags,
+        reviewMode,
+      },
+      address
+    );
+  }
+
+  // ── Success screen ───────────────────────────────────────────────────────────
+
+  if (state === 'done') {
     return (
       <div className="pt-24 pb-20 max-w-2xl mx-auto px-6 text-center">
         <motion.div
@@ -49,17 +114,22 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
           </div>
           <h1 className="text-3xl font-bold mb-4">Submission Successful</h1>
           <p className="text-zinc-500 mb-8 leading-relaxed">
-            Your research has been prepared for on-chain anchoring. Once backend submission is enabled, this flow will post to IPFS and Cardano.
+            Your paper is pinned to IPFS and the anchoring transaction is being confirmed on Cardano.
+            It will appear in Discover once it reaches 3 block confirmations.
           </p>
           <div className="bg-zinc-50 rounded-xl p-6 mb-8 text-left space-y-3">
-            <div className="flex justify-between text-xs">
-              <span className="text-zinc-400 font-bold uppercase tracking-widest">Transaction Hash</span>
-              <span className="font-mono text-[color:var(--color-primary)] select-all">d5f8...e2a9</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-zinc-400 font-bold uppercase tracking-widest">IPFS Content ID</span>
-              <span className="font-mono text-zinc-600 select-all">QmXoyp...5n2K</span>
-            </div>
+            {txHash && (
+              <div className="flex justify-between text-xs gap-4">
+                <span className="text-zinc-400 font-bold uppercase tracking-widest shrink-0">Transaction Hash</span>
+                <span className="font-mono text-[color:var(--color-primary)] select-all break-all">{txHash}</span>
+              </div>
+            )}
+            {cid && (
+              <div className="flex justify-between text-xs gap-4">
+                <span className="text-zinc-400 font-bold uppercase tracking-widest shrink-0">IPFS Content ID</span>
+                <span className="font-mono text-zinc-600 select-all break-all">{cid}</span>
+              </div>
+            )}
           </div>
           <div className="flex flex-col gap-3">
             <button
@@ -69,10 +139,10 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
               Back to Discover
             </button>
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => { reset(); setStep(1); setFile(null); setTitle(''); setAbstract(''); setTags([]); setAuthors([]); }}
               className="w-full py-4 text-zinc-500 font-semibold text-sm hover:text-zinc-800 transition-colors"
             >
-              Return to Dashboard
+              Submit Another Paper
             </button>
           </div>
         </motion.div>
@@ -80,12 +150,22 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
     );
   }
 
+  const isSubmitting = state !== 'idle' && state !== 'error';
+
   return (
     <div className="pt-24 pb-20 max-w-4xl mx-auto px-6">
       <div className="mb-12">
         <h1 className="text-3xl font-bold mb-2">Publish Research</h1>
         <p className="text-zinc-500">Secure your academic legacy on-chain in three simple steps.</p>
       </div>
+
+      {/* Wallet warning */}
+      {!connected && (
+        <div className="mb-6 flex items-center gap-3 px-5 py-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-700 text-sm font-medium">
+          <Wallet className="w-5 h-5 shrink-0" />
+          Connect a Cardano wallet before submitting.
+        </div>
+      )}
 
       {/* Step indicators */}
       <div className="flex items-center gap-4 mb-12">
@@ -115,6 +195,7 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
       {/* Step card */}
       <div className="bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-3xl p-10 card-shadow min-h-[480px] flex flex-col">
         <AnimatePresence mode="wait">
+
           {/* Step 1: Upload */}
           {step === 1 && (
             <motion.div
@@ -122,39 +203,36 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="flex-1 flex flex-col"
+              className="flex-1 flex flex-col gap-4"
             >
-              {!isUploading ? (
-                <div
-                  onClick={handleUpload}
-                  className="flex-1 border-2 border-dashed border-zinc-200 rounded-2xl flex flex-col items-center justify-center bg-zinc-50/50 hover:bg-zinc-50 hover:border-[color:var(--color-primary)]/50 transition-all cursor-pointer group"
-                >
-                  <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mb-6 shadow-sm group-hover:scale-110 transition-transform border border-zinc-100">
-                    <Upload className="w-8 h-8 text-[color:var(--color-primary)]" />
-                  </div>
-                  <h3 className="text-xl font-semibold mb-2">Drag & Drop Research PDF</h3>
-                  <p className="text-sm text-zinc-400 max-w-xs text-center leading-relaxed">
-                    Once uploaded, we will generate a cryptographic fingerprint (SHA-256) for IPFS addressing.
-                  </p>
+              <div
+                onDrop={handleDrop}
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onClick={() => fileInputRef.current?.click()}
+                className={`flex-1 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center bg-zinc-50/50 hover:bg-zinc-50 transition-all cursor-pointer group
+                  ${dragOver ? 'border-[color:var(--color-primary)] bg-zinc-50' : 'border-zinc-200 hover:border-[color:var(--color-primary)]/50'}`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/pdf"
+                  className="hidden"
+                  onChange={handleFileInput}
+                />
+                <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mb-6 shadow-sm group-hover:scale-110 transition-transform border border-zinc-100">
+                  <Upload className="w-8 h-8 text-[color:var(--color-primary)]" />
                 </div>
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center">
-                  <div className="w-full max-w-md space-y-6">
-                    <div className="flex justify-between items-end">
-                      <div className="space-y-1">
-                        <h3 className="text-lg font-semibold">Generating IPFS Hash...</h3>
-                        <p className="text-xs text-zinc-400 font-mono italic">Content: research_framework_v1.pdf</p>
-                      </div>
-                      <span className="text-sm font-bold text-[color:var(--color-primary)]">{uploadProgress}%</span>
-                    </div>
-                    <div className="h-2 w-full bg-zinc-100 rounded-full overflow-hidden">
-                      <motion.div
-                        className="h-full bg-[color:var(--color-primary)]"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${uploadProgress}%` }}
-                      />
-                    </div>
-                  </div>
+                <h3 className="text-xl font-semibold mb-2">Drag & Drop Research PDF</h3>
+                <p className="text-sm text-zinc-400 max-w-xs text-center leading-relaxed">
+                  Max {MAX_FILE_MB} MB · PDF only · A SHA-256 fingerprint is computed before IPFS pinning.
+                </p>
+              </div>
+
+              {fileError && (
+                <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {fileError}
                 </div>
               )}
             </motion.div>
@@ -169,32 +247,47 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
               exit={{ opacity: 0, x: -20 }}
               className="space-y-8"
             >
+              {file && (
+                <div className="flex items-center gap-3 px-4 py-3 bg-zinc-50 border border-[color:var(--color-border)] rounded-xl text-sm text-zinc-600">
+                  <FileText className="w-4 h-4 text-[color:var(--color-primary)] shrink-0" />
+                  <span className="font-medium truncate">{file.name}</span>
+                  <span className="text-zinc-400 shrink-0">({(file.size / 1024 / 1024).toFixed(1)} MB)</span>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-6">
                   <FormField label="Research Title">
-                    <input type="text" placeholder="e.g., A Formal Model for Evolving UTXO Ledger State" className="form-input" />
+                    <input
+                      type="text"
+                      value={title}
+                      onChange={e => setTitle(e.target.value)}
+                      placeholder="e.g., A Formal Model for Evolving UTXO Ledger State"
+                      className="form-input"
+                    />
                   </FormField>
-                  <FormField label="Abstract Snippet">
-                    <textarea rows={5} placeholder="Briefly describe your methodology and conclusions..." className="form-input resize-none" />
+                  <FormField label="Abstract">
+                    <textarea
+                      rows={5}
+                      value={abstract}
+                      onChange={e => setAbstract(e.target.value)}
+                      placeholder="Briefly describe your methodology and conclusions…"
+                      className="form-input resize-none"
+                    />
                   </FormField>
                 </div>
                 <div className="space-y-6">
-                  <FormField label="Field of Study">
-                    <select className="form-input appearance-none cursor-pointer">
-                      <option>Distributed Systems</option>
-                      <option>Cryptography</option>
-                      <option>Macroeconomics</option>
-                      <option>Applied Mathematics</option>
-                    </select>
-                  </FormField>
                   <FormField label="Review Mode">
                     <div className="flex bg-zinc-100 p-1 rounded-xl">
                       {(['Open', 'Blind'] as ReviewMode[]).map((mode) => (
                         <button
                           key={mode}
+                          type="button"
                           onClick={() => setReviewMode(mode)}
                           className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                            reviewMode === mode ? 'bg-white text-[color:var(--color-primary)] shadow-sm' : 'text-zinc-500 hover:text-zinc-700'
+                            reviewMode === mode
+                              ? 'bg-white text-[color:var(--color-primary)] shadow-sm'
+                              : 'text-zinc-500 hover:text-zinc-700'
                           }`}
                         >
                           {mode === 'Open' ? 'Open Review' : 'Double-Blind'}
@@ -202,36 +295,65 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
                       ))}
                     </div>
                   </FormField>
+
                   <FormField label="Keywords">
-                    <div className="flex flex-wrap gap-2 p-2 border border-[color:var(--color-border)] rounded-xl bg-zinc-50">
-                      {['Cardano', 'Haskell', 'UTXO'].map((t) => (
+                    <div className="flex flex-wrap gap-2 p-2 border border-[color:var(--color-border)] rounded-xl bg-zinc-50 min-h-[44px]">
+                      {tags.map(t => (
                         <span key={t} className="px-2 py-1 bg-white border border-[color:var(--color-border)] rounded text-[10px] font-bold text-zinc-600 flex items-center gap-1">
-                          {t} <X className="w-3 h-3 text-zinc-300" />
+                          {t}
+                          <button type="button" onClick={() => setTags(ts => ts.filter(x => x !== t))}>
+                            <X className="w-3 h-3 text-zinc-300 hover:text-zinc-500" />
+                          </button>
                         </span>
                       ))}
-                      <input type="text" className="bg-transparent border-none focus:ring-0 text-xs flex-1 min-w-[50px]" placeholder="Add..." />
+                      <input
+                        type="text"
+                        value={tagInput}
+                        onChange={e => setTagInput(e.target.value)}
+                        onKeyDown={handleTagKeyDown}
+                        onBlur={() => { if (tagInput.trim()) addTag(tagInput); }}
+                        className="bg-transparent border-none focus:ring-0 text-xs flex-1 min-w-[60px] outline-none"
+                        placeholder={tags.length === 0 ? 'Add keywords… (Enter to add)' : 'Add…'}
+                      />
+                    </div>
+                  </FormField>
+
+                  <FormField label="Authors (wallet addresses)">
+                    <div className="flex flex-col gap-2">
+                      {authors.map((addr, i) => (
+                        <div key={addr} className="flex items-center gap-2">
+                          <span className="flex-1 font-mono text-[10px] text-zinc-600 bg-zinc-50 border border-[color:var(--color-border)] rounded-lg px-3 py-2 truncate">
+                            {addr}
+                          </span>
+                          {i > 0 && (
+                            <button type="button" onClick={() => setAuthors(a => a.filter(x => x !== addr))}>
+                              <X className="w-4 h-4 text-zinc-300 hover:text-zinc-500" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </FormField>
                 </div>
               </div>
+
               <div className="flex justify-between items-center pt-8 border-t border-zinc-50">
-                <button onClick={() => setStep(1)} className="text-sm font-semibold text-zinc-400 hover:text-zinc-600">
+                <button type="button" onClick={() => setStep(1)} className="text-sm font-semibold text-zinc-400 hover:text-zinc-600">
                   Back to Upload
                 </button>
-                <div className="flex gap-4">
-                  <button className="px-6 py-2.5 text-zinc-400 font-semibold text-sm">Save Draft</button>
-                  <button
-                    onClick={() => setStep(3)}
-                    className="px-8 py-2.5 bg-[color:var(--color-primary)] text-white text-sm font-semibold rounded-xl hover:bg-[color:var(--color-primary-light)] transition-all shadow-md"
-                  >
-                    Continue to Protocols
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  disabled={!title || !abstract}
+                  onClick={() => setStep(3)}
+                  className="px-8 py-2.5 bg-[color:var(--color-primary)] text-white text-sm font-semibold rounded-xl hover:bg-[color:var(--color-primary-light)] transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Continue to Protocols
+                </button>
               </div>
             </motion.div>
           )}
 
-          {/* Step 3: Protocols */}
+          {/* Step 3: Protocols / Submit */}
           {step === 3 && (
             <motion.div
               key="step3"
@@ -244,44 +366,62 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
                 <div className="space-y-6">
                   <h3 className="text-lg font-bold text-zinc-900">Pre-Publishing Review</h3>
                   <div className="bg-zinc-50 border border-[color:var(--color-border)] rounded-2xl p-6 space-y-4">
-                    <MetaRow label="Verification Status" value={<span className="text-xs font-semibold text-[color:var(--color-primary)] bg-[color:var(--color-primary)]/10 px-2 py-0.5 rounded uppercase">Ready to sign</span>} />
-                    <MetaRow label="Est. Gas (Lovelace)" value="1,842,000 (~1.84 ADA)" mono />
-                    <MetaRow label="Min. Review Stake"   value="50 ADA" />
+                    <MetaRow label="Paper" value={file?.name ?? '—'} />
+                    <MetaRow label="Title" value={title || '—'} />
+                    <MetaRow label="Review Mode" value={reviewMode} />
+                    <MetaRow label="Keywords" value={tags.join(', ') || '—'} />
                   </div>
                   <div className="flex items-start gap-4 p-4 bg-[color:var(--color-primary)]/5 rounded-xl border border-[color:var(--color-primary)]/10">
-                    <ShieldCheck className="w-5 h-5 text-[color:var(--color-primary)] flex-shrink-0 mt-0.5" />
+                    <ShieldCheck className="w-5 h-5 text-[color:var(--color-primary)] shrink-0 mt-0.5" />
                     <p className="text-xs text-[color:var(--color-primary)]/80 leading-relaxed">
-                      By submitting, you agree to stake <strong>10 ADA</strong> as an authenticity bond. This is returned after the first three peer reviews are completed.
+                      Submission pins your paper to IPFS and anchors the CID on Cardano preprod via a metadata transaction.
+                      Your wallet will be prompted twice: once to authenticate, once to sign the anchoring transaction.
                     </p>
                   </div>
                 </div>
                 <div className="space-y-6">
-                  <h3 className="text-lg font-bold text-zinc-900">Protocol Configuration</h3>
-                  <div className="space-y-4">
-                    <ProtocolOption
-                      title="Auto-Incentivize Reviews"
-                      desc="Allocate 500 peerA from personal balance to the reward pool."
-                    />
-                    <ProtocolOption
-                      title="Enable Dispute Window"
-                      desc="Allow 7 days for community audit before permanent archival."
-                    />
+                  <h3 className="text-lg font-bold text-zinc-900">Submission Status</h3>
+                  <div className="bg-zinc-50 border border-[color:var(--color-border)] rounded-2xl p-6 min-h-[100px] flex items-center justify-center">
+                    {state === 'idle' && (
+                      <p className="text-sm text-zinc-400 text-center">Ready to submit. Click the button below when you're ready.</p>
+                    )}
+                    {state === 'error' && submitError && (
+                      <div className="flex items-start gap-3 text-red-600">
+                        <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                        <p className="text-sm">{submitError}</p>
+                      </div>
+                    )}
+                    {isSubmitting && (
+                      <div className="flex flex-col items-center gap-4 text-center">
+                        <div className="w-8 h-8 border-2 border-[color:var(--color-primary)]/30 border-t-[color:var(--color-primary)] rounded-full animate-spin" />
+                        <p className="text-sm text-zinc-600">{progress}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
+
               <div className="flex justify-between items-center pt-8 border-t border-zinc-50">
-                <button onClick={() => setStep(2)} className="text-sm font-semibold text-zinc-400 hover:text-zinc-600">
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  disabled={isSubmitting}
+                  className="text-sm font-semibold text-zinc-400 hover:text-zinc-600 disabled:opacity-40"
+                >
                   Edit Metadata
                 </button>
                 <button
+                  type="button"
                   onClick={handleSubmit}
-                  disabled={isSubmitting}
-                  className={`px-12 py-3 bg-[color:var(--color-primary)] text-white font-bold rounded-xl hover:bg-[color:var(--color-primary-light)] transition-all shadow-lg flex items-center justify-center gap-3 min-w-[200px] ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}`}
+                  disabled={isSubmitting || !connected || !file}
+                  className={`px-12 py-3 bg-[color:var(--color-primary)] text-white font-bold rounded-xl hover:bg-[color:var(--color-primary-light)] transition-all shadow-lg flex items-center justify-center gap-3 min-w-[200px] ${
+                    isSubmitting || !connected || !file ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
                 >
                   {isSubmitting ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Signing...
+                      {state === 'awaitingMetadataSign' || state === 'awaitingTxSign' ? 'Waiting for wallet…' : 'Processing…'}
                     </>
                   ) : (
                     <>
@@ -297,7 +437,7 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
       </div>
 
       {/* Wallet signing overlay */}
-      {isSubmitting && (
+      {(state === 'awaitingMetadataSign' || state === 'awaitingTxSign') && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-6">
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
@@ -307,14 +447,18 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
             <div className="w-16 h-16 bg-zinc-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <Wallet className="w-8 h-8 text-zinc-400 animate-pulse" />
             </div>
-            <h3 className="text-xl font-bold mb-2">Wallet Signature Required</h3>
+            <h3 className="text-xl font-bold mb-2">
+              {state === 'awaitingMetadataSign' ? 'Signature Required' : 'Transaction Signature Required'}
+            </h3>
             <p className="text-sm text-zinc-500 mb-8">
-              Please approve the metadata minting transaction in your connected Cardano wallet extension.
+              {state === 'awaitingMetadataSign'
+                ? 'Please approve the authentication signature in your connected Cardano wallet.'
+                : 'Please approve the metadata anchoring transaction in your connected Cardano wallet.'}
             </p>
-            <div className="flex items-center justify-center gap-4 animate-bounce">
-              <div className="w-2 h-2 rounded-full bg-[color:var(--color-primary)]" />
-              <div className="w-2 h-2 rounded-full bg-[color:var(--color-primary)]/60" />
-              <div className="w-2 h-2 rounded-full bg-[color:var(--color-primary)]/30" />
+            <div className="flex items-center justify-center gap-4">
+              <div className="w-2 h-2 rounded-full bg-[color:var(--color-primary)] animate-bounce" style={{ animationDelay: '0ms' }} />
+              <div className="w-2 h-2 rounded-full bg-[color:var(--color-primary)]/60 animate-bounce" style={{ animationDelay: '150ms' }} />
+              <div className="w-2 h-2 rounded-full bg-[color:var(--color-primary)]/30 animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
           </motion.div>
         </div>
@@ -324,6 +468,7 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
 }
 
 // Helper sub-components
+
 function FormField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
@@ -333,25 +478,11 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
   );
 }
 
-function MetaRow({ label, value, mono = false }: { label: string; value: React.ReactNode; mono?: boolean }) {
+function MetaRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between items-center">
-      <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest">{label}</span>
-      {typeof value === 'string' ? (
-        <span className={`text-sm font-bold text-zinc-700 ${mono ? 'font-mono' : ''}`}>{value}</span>
-      ) : value}
+    <div className="flex justify-between items-start gap-4">
+      <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest shrink-0">{label}</span>
+      <span className="text-xs text-zinc-700 text-right break-all">{value}</span>
     </div>
-  );
-}
-
-function ProtocolOption({ title, desc }: { title: string; desc: string }) {
-  return (
-    <label className="flex items-center gap-4 p-4 border border-[color:var(--color-border)] rounded-2xl hover:bg-zinc-50 cursor-pointer transition-all">
-      <input type="checkbox" defaultChecked className="w-5 h-5 rounded border-zinc-300 text-[color:var(--color-primary)] focus:ring-[color:var(--color-primary)]" />
-      <div className="space-y-1">
-        <div className="text-sm font-bold text-zinc-800">{title}</div>
-        <div className="text-[11px] text-zinc-400 leading-tight">{desc}</div>
-      </div>
-    </label>
   );
 }

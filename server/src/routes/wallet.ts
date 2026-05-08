@@ -1,35 +1,21 @@
 import { Hono } from 'hono'
-import { blockfrost } from '../lib/blockfrost'
+import { getAddress, mapBlockfrostError } from '../lib/blockfrost'
 
 const wallet = new Hono()
 const BLOCKFROST_BASE_URL = 'https://cardano-preprod.blockfrost.io/api/v0'
 
-/**
- * GET /api/wallet/:address
- * Returns ADA balance and basic info for a given Cardano address.
- * The frontend uses this to display wallet state after CIP-30 connection.
- *
- * Note: peerA token balance will be added here once the token is deployed.
- */
 wallet.get('/:address', async (c) => {
   const address = c.req.param('address')
 
-  // Basic bech32 sanity check — real validation happens on-chain
   if (!address.startsWith('addr') && !address.startsWith('stake')) {
     return c.json({ success: false, error: 'Invalid Cardano address format' }, 400)
   }
 
   try {
-    const info = await blockfrost.addresses(address)
+    const info = await getAddress(address)
 
-    // Sum lovelace from UTxOs
-    const lovelace =
-      info.amount.find((a) => a.unit === 'lovelace')?.quantity ?? '0'
-
-    // peerA balance — placeholder until token policy ID is confirmed
-    const peerA =
-      info.amount.find((a) => a.unit.includes('peerA'))?.quantity ?? '0'
-    const transactions = await getRecentTransactions(address)
+    const lovelace = info.amount.find((a) => a.unit === 'lovelace')?.quantity ?? '0'
+    const peerA = info.amount.find((a) => a.unit.includes('peerA'))?.quantity ?? '0'
 
     return c.json({
       success: true,
@@ -46,9 +32,8 @@ wallet.get('/:address', async (c) => {
       },
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    // Blockfrost returns 404 for addresses with no transactions yet
-    if (message.includes('404')) {
+    const { status, message } = mapBlockfrostError(err)
+    if (status === 404) {
       return c.json({
         success: true,
         data: {
@@ -61,7 +46,8 @@ wallet.get('/:address', async (c) => {
         },
       })
     }
-    return c.json({ success: false, error: message }, 500)
+    console.error('[wallet] Blockfrost error:', message)
+    return c.json({ success: false, error: message }, status as 400 | 500 | 502 | 503 | 504)
   }
 })
 

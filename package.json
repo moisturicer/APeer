@@ -23,8 +23,7 @@
   "dependencies": {
     "@blockfrost/blockfrost-js": "^6.1.1",
     "@meshsdk/core": "^1.9.0-beta.102",
-    "@meshsdk/core-cst": "^1.9.0-beta.102",
-    "dotenv": "^17.4.2",
-    "motion": "^12.38.0"
+    "motion": "^12.38.0",
+    "vite-plugin-node-polyfills": "^0.26.0"
   }
 }
