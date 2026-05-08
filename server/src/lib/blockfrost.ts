@@ -1,7 +1,7 @@
 import { BlockFrostAPI } from '@blockfrost/blockfrost-js'
 import { TtlCache } from './cache'
 
-const NETWORK = 'preprod'
+export const NETWORK = 'preprod'
 
 const projectId = process.env.BLOCKFROST_PROJECT_ID
 

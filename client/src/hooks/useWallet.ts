@@ -5,6 +5,7 @@ export interface WalletState {
   connecting: boolean
   address: string | null
   name: string | null
+  networkId: number | null
   error: string | null
 }
 
@@ -14,6 +15,7 @@ export function useWallet() {
     connecting: false,
     address: null,
     name: null,
+    networkId: null,
     error: null,
   })
   const [wallet, setWallet] = useState<Cip30Api | null>(null)
@@ -29,8 +31,17 @@ export function useWallet() {
       const addrs = await w.getUsedAddresses()
       const rawAddress = addrs[0] ?? await w.getChangeAddress()
       const address = normalizeWalletAddress(rawAddress)
+      const networkId =
+        typeof w.getNetworkId === 'function' ? await w.getNetworkId().catch(() => null) : null
       setWallet(w)
-      setState({ connected: true, connecting: false, address, name: walletName, error: null })
+      setState({
+        connected: true,
+        connecting: false,
+        address,
+        name: walletName,
+        networkId,
+        error: null,
+      })
     } catch (e) {
       setState(s => ({
         ...s,
@@ -42,7 +53,14 @@ export function useWallet() {
 
   const disconnect = useCallback(() => {
     setWallet(null)
-    setState({ connected: false, connecting: false, address: null, name: null, error: null })
+    setState({
+      connected: false,
+      connecting: false,
+      address: null,
+      name: null,
+      networkId: null,
+      error: null,
+    })
   }, [])
 
   const clearError = useCallback(() => {
@@ -72,6 +90,7 @@ export function useWallet() {
 interface Cip30Api {
   getUsedAddresses(): Promise<string[]>
   getChangeAddress(): Promise<string>
+  getNetworkId?(): Promise<number>
 }
 
 interface Cip30Provider {
@@ -157,7 +176,12 @@ function toCardanoBech32(bytes: Uint8Array): string {
     throw new Error('Empty address bytes');
   }
   const addressType = bytes[0] >> 4;
-  const hrp = addressType === 14 || addressType === 15 ? 'stake' : 'addr';
+  const networkId = bytes[0] & 0x0f;
+  const isStake = addressType === 14 || addressType === 15;
+  const isMainnet = networkId === 1;
+  const hrp = isStake
+    ? isMainnet ? 'stake' : 'stake_test'
+    : isMainnet ? 'addr' : 'addr_test';
   return bech32Encode(hrp, bytes);
 }
 

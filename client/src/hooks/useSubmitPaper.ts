@@ -105,18 +105,43 @@ export function useSubmitPaper(walletName: string | null) {
         const confirmNonce = confirmNonceRes.data.nonce
         const confirmSig = await signNonce(walletName, address, confirmNonce)
 
-        await api.confirmPaper(newCid, {
+        const confirmRes = await api.confirmPaper(newCid, {
           txHash: newTxHash,
           walletAddress: address,
           nonce: confirmNonce,
           signature: confirmSig.signature,
           key: confirmSig.key,
         })
+        if (confirmRes.error || !confirmRes.data) {
+          throw new Error(confirmRes.error ?? 'Failed to register anchoring transaction')
+        }
 
         setState('confirming')
         setProgress('Paper anchored! Waiting for on-chain confirmation (≥ 3 blocks)…')
 
-        // Server handles confirmation polling; we can show done immediately
+        // Server handles tx tracking; poll the paper status so UI reflects actual confirmation progress.
+        let confirmed = false
+        for (let attempt = 0; attempt < 36; attempt += 1) {
+          await new Promise(resolve => setTimeout(resolve, 5000))
+          const paperRes = await api.getPaper(newCid)
+          if (paperRes.error || !paperRes.data) {
+            continue
+          }
+
+          const status = paperRes.data.confirmationStatus
+          if (status === 'confirmed') {
+            confirmed = true
+            break
+          }
+          if (status === 'confirmation_timeout') {
+            throw new Error('Transaction confirmation timed out. Please check your tx hash and retry.')
+          }
+        }
+
+        if (!confirmed) {
+          throw new Error('Still waiting for on-chain confirmation. Please check Discover in a few minutes.')
+        }
+
         setState('done')
         setProgress('Paper successfully anchored on Cardano.')
       } catch (err) {

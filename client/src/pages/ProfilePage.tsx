@@ -10,10 +10,18 @@ interface ProfilePageProps {
   walletAddress: string | null;
   walletName: string | null;
   onPublish: () => void;
+  onSelectPaper: (paper: Paper) => void;
 }
 
-export function ProfilePage({ papers, connected, walletAddress, walletName, onPublish }: Readonly<ProfilePageProps>) {
-  const { data: walletInfo, loading: walletLoading } = useWalletInfo(walletAddress);
+export function ProfilePage({
+  papers,
+  connected,
+  walletAddress,
+  walletName,
+  onPublish,
+  onSelectPaper,
+}: Readonly<ProfilePageProps>) {
+  const { data: walletInfo, loading: walletLoading, error: walletError } = useWalletInfo(walletAddress);
   const [displayName, setDisplayName] = useState('Researcher');
   const [draftName, setDraftName] = useState('Researcher');
   const [editingName, setEditingName] = useState(false);
@@ -21,10 +29,9 @@ export function ProfilePage({ papers, connected, walletAddress, walletName, onPu
   const authoredPapers = normalizedAddress
     ? papers.filter((paper) => paper.authors.some((author) => author.address.toLowerCase() === normalizedAddress))
     : [];
-  const visiblePapers = authoredPapers.length > 0 ? authoredPapers : papers;
-  const totalReviews = visiblePapers.reduce((sum, paper) => sum + paper.reviewCount, 0);
-  const totalPeerA = visiblePapers.reduce((sum, paper) => sum + paper.rewardPool, 0);
-  const totalDisputes = visiblePapers.filter((paper) => paper.status === 'Disputed').length;
+  const totalReviews = authoredPapers.reduce((sum, paper) => sum + paper.reviewCount, 0);
+  const totalPeerA = authoredPapers.reduce((sum, paper) => sum + paper.rewardPool, 0);
+  const totalDisputes = authoredPapers.filter((paper) => paper.status === 'Disputed').length;
   const reputation =
     normalizedAddress
       ? papers
@@ -34,13 +41,15 @@ export function ProfilePage({ papers, connected, walletAddress, walletName, onPu
   const shortAddress = walletAddress ? `${walletAddress.slice(0, 8)}...${walletAddress.slice(-6)}` : 'No wallet connected';
   const avatarLabel = walletAddress ? walletAddress.slice(4, 8).toUpperCase() : '--';
   const stats = [
-    { label: 'Papers', val: String(visiblePapers.length) },
+    { label: 'Papers', val: String(authoredPapers.length) },
     { label: 'Reviews', val: String(totalReviews) },
     { label: 'peerA Earned', val: totalPeerA.toLocaleString(), isToken: true },
     { label: 'Disputes', val: String(totalDisputes) },
   ];
   const recentTransactions = walletInfo?.transactions ?? [];
   const isWalletDataAvailable = connected && !!walletAddress;
+  const isPreprod = walletInfo?.network === 'preprod';
+  const adaLabel = isPreprod ? 'tADA' : 'ADA';
   const profileNameStorageKey = walletAddress ? `apeer.profile.name:${walletAddress.toLowerCase()}` : null;
 
   useEffect(() => {
@@ -175,9 +184,14 @@ export function ProfilePage({ papers, connected, walletAddress, walletName, onPu
             {isWalletDataAvailable && walletLoading && (
               <p className="text-sm text-zinc-500">Loading wallet balances...</p>
             )}
+            {isWalletDataAvailable && !walletLoading && walletError && (
+              <div className="p-4 border border-amber-200 bg-amber-50 rounded-xl text-sm text-amber-700">
+                Unable to load wallet balances: {walletError}
+              </div>
+            )}
             {isWalletDataAvailable && !walletLoading && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <BalanceCard label="ADA" value={walletInfo?.balance.ada ?? '0'} />
+                <BalanceCard label={adaLabel} value={walletInfo?.balance.ada ?? '0'} />
                 <BalanceCard label="Lovelace" value={(walletInfo?.balance.lovelace ?? '0').toLocaleString()} />
                 <BalanceCard label="peerA" value={walletInfo?.balance.peerA ?? '0'} token />
               </div>
@@ -233,7 +247,7 @@ export function ProfilePage({ papers, connected, walletAddress, walletName, onPu
           <div className="bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-2xl overflow-hidden">
             <div className="flex border-b border-[color:var(--color-border)]">
               <button className="px-8 py-4 text-sm font-semibold border-b-2 border-[color:var(--color-primary)] text-[color:var(--color-primary)]">
-                Published Papers
+                Your Published Papers
               </button>
               <button className="px-8 py-4 text-sm font-semibold text-zinc-400 hover:text-zinc-600">
                 Reviews Given
@@ -244,15 +258,17 @@ export function ProfilePage({ papers, connected, walletAddress, walletName, onPu
             </div>
             <div className="p-8">
               <div className="space-y-4">
-                {visiblePapers.length === 0 ? (
+                {authoredPapers.length === 0 ? (
                   <div className="p-6 border border-dashed border-[color:var(--color-border)] rounded-xl text-sm text-zinc-500">
-                    Connect a wallet to view papers linked to your address.
+                    No papers found for your connected wallet address yet.
                   </div>
                 ) : (
-                  visiblePapers.slice(0, 5).map((paper) => (
-                    <div
+                  authoredPapers.slice(0, 5).map((paper) => (
+                    <button
                       key={paper.id}
-                      className="p-4 border border-[color:var(--color-border)] rounded-xl hover:bg-zinc-50 transition-colors flex items-center justify-between group"
+                      type="button"
+                      onClick={() => onSelectPaper(paper)}
+                      className="w-full text-left p-4 border border-[color:var(--color-border)] rounded-xl hover:bg-zinc-50 transition-colors flex items-center justify-between group"
                     >
                       <div>
                         <h4 className="font-semibold text-zinc-900 group-hover:text-[color:var(--color-primary)] transition-colors">
@@ -263,7 +279,7 @@ export function ProfilePage({ papers, connected, walletAddress, walletName, onPu
                         </div>
                       </div>
                       <ChevronRight className="w-4 h-4 text-zinc-300 group-hover:translate-x-1 transition-transform" />
-                    </div>
+                    </button>
                   ))
                 )}
               </div>

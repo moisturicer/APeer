@@ -10,7 +10,6 @@ interface NavbarProps {
   connected: boolean;
   connecting: boolean;
   walletAddress: string | null;
-  walletName: string | null;
   wallets: AvailableWallet[];
   walletError: string | null;
   onClearWalletError: () => void;
@@ -24,7 +23,6 @@ export function Navbar({
   connected,
   connecting,
   walletAddress,
-  walletName,
   wallets,
   walletError,
   onClearWalletError,

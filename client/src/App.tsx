@@ -19,6 +19,7 @@ import { SubmitPage } from "./pages/SubmitPage";
 import { GovernancePage } from "./pages/GovernancePage";
 import { usePapers } from "./hooks/usePapers";
 import { useWallet } from "./hooks/useWallet";
+import { api } from "./lib/api";
 
 import type { Paper, View } from "./types";
 
@@ -27,13 +28,14 @@ type AvailableWallet = { id: string; name: string; icon: string };
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { papers, loading } = usePapers();
+  const { papers, loading, error: papersError, reload: reloadPapers } = usePapers();
   const [wallets, setWallets] = useState<AvailableWallet[]>([]);
   const {
     connected,
     connecting,
     address,
     name,
+    networkId,
     error,
     connect,
     disconnect,
@@ -77,7 +79,6 @@ export default function App() {
         activeView={view}
         setView={(next) => navigate(pathFromView(next))}
         walletAddress={address}
-        walletName={name}
         wallets={wallets}
         connecting={connecting}
         walletError={error}
@@ -122,6 +123,8 @@ export default function App() {
                   <DiscoverPage
                     papers={papers}
                     loading={loading}
+                    error={papersError}
+                    onReload={reloadPapers}
                     onSelectPaper={(paper) => navigate(`/papers/${paper.id}`)}
                   />
                 }
@@ -139,13 +142,20 @@ export default function App() {
                     walletAddress={address}
                     walletName={name}
                     onPublish={() => navigate("/submit")}
+                    onSelectPaper={(paper) => navigate(`/papers/${paper.id}`)}
                   />
                 }
               />
               <Route
                 path="/submit"
                 element={
-                  <SubmitPage onComplete={() => navigate("/discover")} />
+                  <SubmitPage
+                    onComplete={() => navigate("/discover")}
+                    connected={connected}
+                    address={address}
+                    walletName={name}
+                    networkId={networkId}
+                  />
                 }
               />
               <Route path="/governance" element={<GovernancePage />} />
@@ -166,9 +176,34 @@ function PaperDetailRoute({
 }: Readonly<{ papers: Paper[]; loading: boolean }>) {
   const { paperId } = useParams();
   const navigate = useNavigate();
-  const paper = papers.find((entry) => entry.id === paperId);
+  const [paper, setPaper] = useState<Paper | null>(null);
+  const [detailLoading, setDetailLoading] = useState(true);
 
-  if (loading) {
+  useEffect(() => {
+    let cancelled = false;
+    if (!paperId) {
+      setPaper(null);
+      setDetailLoading(false);
+      return;
+    }
+
+    setDetailLoading(true);
+    api.getPaper(paperId).then((res) => {
+      if (cancelled) return;
+      if (res.error || !res.data) {
+        setPaper(null);
+      } else {
+        setPaper(res.data);
+      }
+      setDetailLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [paperId, papers]);
+
+  if (loading || detailLoading) {
     return (
       <div className="pt-24 pb-20 max-w-3xl mx-auto px-6">
         <div className="p-8 border border-[color:var(--color-border)] bg-[color:var(--color-surface)] rounded-2xl text-center">
@@ -178,7 +213,7 @@ function PaperDetailRoute({
     );
   }
 
-  if (!paper) {
+  if (!paper || !paperId) {
     return (
       <div className="pt-24 pb-20 max-w-3xl mx-auto px-6">
         <div className="p-8 border border-[color:var(--color-border)] bg-[color:var(--color-surface)] rounded-2xl text-center">

@@ -3,18 +3,24 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Upload, FileText, ShieldCheck, CheckCircle2, Lock, Wallet, X, AlertCircle
 } from 'lucide-react';
-import { useWallet } from '@/hooks/useWallet';
 import { useSubmitPaper } from '@/hooks/useSubmitPaper';
+import { useWalletInfo } from '@/hooks/useBlockfrost';
 import type { ReviewMode } from '@/types';
 
 const MAX_FILE_MB = 50;
+const REQUIRED_NETWORK = 'preprod';
+const MIN_BALANCE_LOVELACE = 3_000_000n;
 
 interface SubmitPageProps {
   onComplete: () => void;
+  connected: boolean;
+  address: string | null;
+  walletName: string | null;
+  networkId: number | null;
 }
 
-export function SubmitPage({ onComplete }: SubmitPageProps) {
-  const { connected, address, name: walletName } = useWallet();
+export function SubmitPage({ onComplete, connected, address, walletName, networkId }: SubmitPageProps) {
+  const { data: walletInfo, loading: walletInfoLoading, error: walletInfoError } = useWalletInfo(address);
 
   const { state, progress, error: submitError, cid, txHash, submit, reset } = useSubmitPaper(walletName);
 
@@ -30,6 +36,33 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
   const [authors, setAuthors]       = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ── Derived wallet/network state (must be declared before any function that uses them) ──
+
+  const walletNetwork = walletInfo?.network ?? null;
+  const isWrongWalletNetwork =
+    networkId === 1 || (walletNetwork !== null && walletNetwork !== REQUIRED_NETWORK);
+  const hasWalletInfo = !!walletInfo && !walletInfoError;
+  const availableLovelace = hasWalletInfo && walletInfo.balance?.lovelace
+    ? BigInt(walletInfo.balance.lovelace)
+    : 0n;
+  const hasMinimumBalance = availableLovelace >= MIN_BALANCE_LOVELACE;
+  const hasWalletChecks =
+    connected && !walletInfoLoading && hasWalletInfo && !isWrongWalletNetwork && hasMinimumBalance;
+  const isSubmissionAllowed = hasWalletChecks && !!file;
+
+  const uploadLockedReason =
+    !connected
+      ? 'Connect Wallet to Upload'
+      : walletInfoLoading
+      ? 'Checking wallet status...'
+      : walletInfoError
+      ? `Unable to read wallet balance: ${walletInfoError}`
+      : isWrongWalletNetwork
+      ? 'Switch wallet/backend to Cardano preprod'
+      : !hasMinimumBalance
+      ? 'Insufficient tADA balance'
+      : null;
+
   // Seed authors from connected wallet when first entering step 2
   const initAuthors = useCallback(() => {
     if (address && authors.length === 0) setAuthors([address]);
@@ -37,8 +70,20 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
 
   // ── File handling ────────────────────────────────────────────────────────────
 
-  function validateAndSetFile(f: File) {
+  async function validateAndSetFile(f: File) {
     setFileError(null);
+    if (!connected) {
+      setFileError('Connect your Cardano wallet before uploading.');
+      return;
+    }
+    if (isWrongWalletNetwork) {
+      setFileError('Wallet is on wrong network. Switch to Cardano preprod before uploading.');
+      return;
+    }
+    if (!hasMinimumBalance) {
+      setFileError('Insufficient tADA balance for upload + transaction fees.');
+      return;
+    }
     if (!f.type.includes('pdf')) {
       setFileError('Only PDF files are accepted.');
       return;
@@ -47,21 +92,39 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
       setFileError(`File exceeds ${MAX_FILE_MB} MB limit.`);
       return;
     }
+
+    const firstBytes = new Uint8Array(await f.slice(0, 5).arrayBuffer());
+    const pdfHeader = Array.from(firstBytes).map((b) => String.fromCharCode(b)).join('');
+    if (pdfHeader !== '%PDF-') {
+      setFileError('Invalid PDF signature. The file content does not match a real PDF.');
+      return;
+    }
+
+    const inspectionChunk = await f.slice(0, Math.min(f.size, 1_000_000)).text();
+    if (/\/Encrypt\b/.test(inspectionChunk)) {
+      setFileError('Password-protected/encrypted PDFs are not allowed.');
+      return;
+    }
+
     setFile(f);
     setStep(2);
     initAuthors();
   }
 
-  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
-    if (f) validateAndSetFile(f);
+    if (f) await validateAndSetFile(f);
   }
 
-  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+  async function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setDragOver(false);
+    if (uploadLockedReason) {
+      setFileError(uploadLockedReason);
+      return;
+    }
     const f = e.dataTransfer.files[0];
-    if (f) validateAndSetFile(f);
+    if (f) await validateAndSetFile(f);
   }
 
   // ── Tags ─────────────────────────────────────────────────────────────────────
@@ -85,7 +148,7 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
   // ── Submit ───────────────────────────────────────────────────────────────────
 
   function handleSubmit() {
-    if (!file || !connected || !address) return;
+    if (!file || !connected || !address || !isSubmissionAllowed) return;
     void submit(
       {
         file,
@@ -152,6 +215,12 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
 
   const isSubmitting = state !== 'idle' && state !== 'error';
 
+  const statusStages = [
+    { key: 'pinned',    label: 'IPFS Pinned',     done: ['awaitingTxSign', 'broadcasting', 'confirming', 'done'].includes(state) },
+    { key: 'submitted', label: 'Tx Submitted',     done: ['confirming', 'done'].includes(state) },
+    { key: 'confirmed', label: '3 Confirmations',  done: state === 'confirming' },
+  ];
+
   return (
     <div className="pt-24 pb-20 max-w-4xl mx-auto px-6">
       <div className="mb-12">
@@ -164,6 +233,19 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
         <div className="mb-6 flex items-center gap-3 px-5 py-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-700 text-sm font-medium">
           <Wallet className="w-5 h-5 shrink-0" />
           Connect a Cardano wallet before submitting.
+        </div>
+      )}
+      {connected && (
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+          <div className={`px-4 py-3 rounded-xl border ${isWrongWalletNetwork ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
+            Network: {walletInfoLoading ? 'Checking...' : isWrongWalletNetwork ? `Wrong (${walletNetwork ?? 'unknown'})` : 'preprod'}
+            <div className="mt-1 text-[10px] opacity-80">
+              Backend active: {walletInfoLoading ? 'checking...' : walletNetwork ?? 'unknown'}
+            </div>
+          </div>
+          <div className={`px-4 py-3 rounded-xl border ${hasMinimumBalance ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+            tADA balance check: {walletInfoLoading ? 'Checking...' : walletInfoError ? 'Unable to load balance' : hasMinimumBalance ? 'Ready for fees' : 'Need at least 3 tADA'}
+          </div>
         </div>
       )}
 
@@ -207,10 +289,11 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
             >
               <div
                 onDrop={handleDrop}
-                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragOver={e => { e.preventDefault(); if (!uploadLockedReason) setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => { if (!uploadLockedReason) fileInputRef.current?.click(); }}
                 className={`flex-1 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center bg-zinc-50/50 hover:bg-zinc-50 transition-all cursor-pointer group
+                  ${uploadLockedReason ? 'opacity-70 cursor-not-allowed' : ''}
                   ${dragOver ? 'border-[color:var(--color-primary)] bg-zinc-50' : 'border-zinc-200 hover:border-[color:var(--color-primary)]/50'}`}
               >
                 <input
@@ -219,13 +302,14 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
                   accept="application/pdf"
                   className="hidden"
                   onChange={handleFileInput}
+                  disabled={!!uploadLockedReason}
                 />
                 <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mb-6 shadow-sm group-hover:scale-110 transition-transform border border-zinc-100">
                   <Upload className="w-8 h-8 text-[color:var(--color-primary)]" />
                 </div>
-                <h3 className="text-xl font-semibold mb-2">Drag & Drop Research PDF</h3>
+                <h3 className="text-xl font-semibold mb-2">{uploadLockedReason ?? 'Drag & Drop Research PDF'}</h3>
                 <p className="text-sm text-zinc-400 max-w-xs text-center leading-relaxed">
-                  Max {MAX_FILE_MB} MB · PDF only · A SHA-256 fingerprint is computed before IPFS pinning.
+                  Max {MAX_FILE_MB} MB · PDF signature verified · encrypted PDFs blocked before upload.
                 </p>
               </div>
 
@@ -343,7 +427,7 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
                 </button>
                 <button
                   type="button"
-                  disabled={!title || !abstract}
+                  disabled={!title || !abstract || !hasWalletChecks}
                   onClick={() => setStep(3)}
                   className="px-8 py-2.5 bg-[color:var(--color-primary)] text-white text-sm font-semibold rounded-xl hover:bg-[color:var(--color-primary-light)] transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -381,6 +465,20 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
                 </div>
                 <div className="space-y-6">
                   <h3 className="text-lg font-bold text-zinc-900">Submission Status</h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    {statusStages.map((stage) => (
+                      <div
+                        key={stage.key}
+                        className={`text-[10px] text-center px-2 py-2 rounded-lg border font-semibold ${
+                          stage.done
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                            : 'bg-zinc-50 border-zinc-200 text-zinc-400'
+                        }`}
+                      >
+                        {stage.label}
+                      </div>
+                    ))}
+                  </div>
                   <div className="bg-zinc-50 border border-[color:var(--color-border)] rounded-2xl p-6 min-h-[100px] flex items-center justify-center">
                     {state === 'idle' && (
                       <p className="text-sm text-zinc-400 text-center">Ready to submit. Click the button below when you're ready.</p>
@@ -413,9 +511,9 @@ export function SubmitPage({ onComplete }: SubmitPageProps) {
                 <button
                   type="button"
                   onClick={handleSubmit}
-                  disabled={isSubmitting || !connected || !file}
+                  disabled={isSubmitting || !isSubmissionAllowed}
                   className={`px-12 py-3 bg-[color:var(--color-primary)] text-white font-bold rounded-xl hover:bg-[color:var(--color-primary-light)] transition-all shadow-lg flex items-center justify-center gap-3 min-w-[200px] ${
-                    isSubmitting || !connected || !file ? 'opacity-60 cursor-not-allowed' : ''
+                    isSubmitting || !isSubmissionAllowed ? 'opacity-60 cursor-not-allowed' : ''
                   }`}
                 >
                   {isSubmitting ? (

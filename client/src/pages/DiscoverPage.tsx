@@ -7,6 +7,8 @@ import type { Paper } from '../types';
 interface DiscoverPageProps {
   papers: Paper[];
   loading?: boolean;
+  error?: string | null;
+  onReload?: () => void;
   onSelectPaper: (p: Paper) => void;
 }
 
@@ -17,7 +19,7 @@ const STATUS_LABELS: Record<Paper['status'], string> = {
   'Awaiting Review': 'Awaiting Review',
 };
 
-export function DiscoverPage({ papers, loading = false, onSelectPaper }: DiscoverPageProps) {
+export function DiscoverPage({ papers, loading = false, error = null, onReload, onSelectPaper }: DiscoverPageProps) {
   const [query, setQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedStatuses, setSelectedStatuses] = useState<Paper['status'][]>([]);
@@ -127,6 +129,20 @@ export function DiscoverPage({ papers, loading = false, onSelectPaper }: Discove
 
         <div className="space-y-4">
           {loading && <p className="text-sm text-zinc-400">Loading papers...</p>}
+          {!loading && error && (
+            <div className="p-4 border border-amber-200 bg-amber-50 rounded-xl text-sm text-amber-700 flex items-center justify-between gap-4">
+              <span>Unable to refresh papers: {error}</span>
+              {onReload && (
+                <button
+                  type="button"
+                  onClick={onReload}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-amber-200 hover:bg-amber-100 transition-colors"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          )}
           {!loading && filteredPapers.length === 0 && (
             <p className="text-sm text-zinc-400">No papers match your current filters.</p>
           )}
@@ -156,13 +172,19 @@ export function DiscoverPage({ papers, loading = false, onSelectPaper }: Discove
               </h3>
 
               <div className="flex items-center gap-3 mb-4">
-                <div className="text-xs font-mono text-zinc-500 bg-zinc-50 px-2 py-0.5 rounded border border-zinc-100">
-                  {paper.authors[0].address.slice(0, 8)}...
-                </div>
-                <div className="flex items-center gap-1 text-[10px] font-bold text-[color:var(--color-primary)] px-1.5 py-0.5 rounded bg-[color:var(--color-primary)]/5 uppercase tracking-wider">
-                  <TrendingUp className="w-3 h-3" />
-                  Rep {paper.authors[0].reputation}
-                </div>
+                {paper.authors[0] ? (
+                  <>
+                    <div className="text-xs font-mono text-zinc-500 bg-zinc-50 px-2 py-0.5 rounded border border-zinc-100">
+                      {paper.authors[0].address.slice(0, 8)}...
+                    </div>
+                    <div className="flex items-center gap-1 text-[10px] font-bold text-[color:var(--color-primary)] px-1.5 py-0.5 rounded bg-[color:var(--color-primary)]/5 uppercase tracking-wider">
+                      <TrendingUp className="w-3 h-3" />
+                      Rep {paper.authors[0].reputation}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-xs text-zinc-400">Unknown author</div>
+                )}
                 <span className="text-zinc-300">•</span>
                 <span className="text-xs text-zinc-400 font-medium italic">{paper.date}</span>
               </div>

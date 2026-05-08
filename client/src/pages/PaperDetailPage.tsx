@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   TrendingUp, Award, ShieldCheck, Gift, AlertCircle,
@@ -15,27 +15,39 @@ const TABS = ['Abstract', 'Full Paper', 'Reviews', 'Disputes', 'History'];
 
 export function PaperDetailPage({ paper, reviews }: PaperDetailPageProps) {
   const [activeTab, setActiveTab] = useState('Abstract');
+  const [showViewedPulse, setShowViewedPulse] = useState(true);
   const paperReviews = reviews.filter((r) => r.paperId === paper.id);
+  const primaryAuthor = paper.authors[0];
+
+  useEffect(() => {
+    setShowViewedPulse(true);
+    const timeout = globalThis.setTimeout(() => {
+      setShowViewedPulse(false);
+    }, 2200);
+    return () => {
+      globalThis.clearTimeout(timeout);
+    };
+  }, [paper.id]);
 
   return (
-    <div className="pt-24 pb-20 max-w-7xl mx-auto px-6">
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
+    <div className="pt-24 pb-24 max-w-7xl mx-auto px-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-12">
         {/* Main content */}
         <div className="lg:col-span-3">
           {/* Header */}
-          <div className="mb-10">
+          <div className="mb-12">
             <div className="flex items-center gap-3 mb-4">
               <span className="text-xs font-mono text-zinc-400 bg-zinc-100 rounded px-2 py-1">
                 IPFS: {paper.ipfsHash}
               </span>
               <span className="text-xs text-zinc-400 italic">Submitted {paper.date}</span>
             </div>
-            <h1 className="text-4xl font-semibold mb-6 tracking-tight leading-tight">{paper.title}</h1>
-            <div className="flex flex-wrap gap-4 items-center">
+            <h1 className="text-4xl font-semibold mb-8 tracking-tight leading-tight">{paper.title}</h1>
+            <div className="flex flex-wrap gap-5 items-center">
               {paper.authors.map((author) => (
                 <div key={author.id} className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-zinc-100 border border-[color:var(--color-border)] flex items-center justify-center font-mono text-xs">
-                    {author.id.toUpperCase()}
+                    {(author.address || author.id).slice(0, 4).toUpperCase()}
                   </div>
                   <div>
                     <div className="text-sm font-semibold flex items-center gap-2">
@@ -50,6 +62,9 @@ export function PaperDetailPage({ paper, reviews }: PaperDetailPageProps) {
                   </div>
                 </div>
               ))}
+              {paper.authors.length === 0 && (
+                <div className="text-sm text-zinc-500">Unknown author</div>
+              )}
             </div>
           </div>
 
@@ -91,7 +106,7 @@ export function PaperDetailPage({ paper, reviews }: PaperDetailPageProps) {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                className="prose prose-zinc max-w-none"
+                className="prose prose-zinc max-w-none pt-2"
               >
                 <p className="text-lg leading-relaxed text-zinc-600 mb-8 font-medium italic">
                   "{paper.abstract}"
@@ -203,6 +218,25 @@ export function PaperDetailPage({ paper, reviews }: PaperDetailPageProps) {
                 <span className="text-sm font-semibold">{paper.citations}</span>
               </div>
               <div className="flex justify-between items-center">
+                <span className="text-sm text-zinc-500">Views</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold">{paper.views}</span>
+                  <AnimatePresence>
+                    {showViewedPulse && (
+                      <motion.span
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.35 }}
+                        className="text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 font-semibold"
+                      >
+                        Viewed just now
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+              <div className="flex justify-between items-center">
                 <span className="text-sm text-zinc-500">peerA Earned</span>
                 <span className="text-sm font-semibold flex items-center gap-1 text-[color:var(--color-accent)]">
                   <Gift className="w-3.5 h-3.5" />
@@ -211,7 +245,7 @@ export function PaperDetailPage({ paper, reviews }: PaperDetailPageProps) {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-zinc-500">Staked ADA</span>
-                <span className="text-sm font-semibold">1,250 ADA</span>
+                <span className="text-sm font-semibold">{primaryAuthor ? '1,250 tADA' : '—'}</span>
               </div>
             </div>
           </div>

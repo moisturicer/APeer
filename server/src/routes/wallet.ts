@@ -13,6 +13,7 @@ wallet.get('/:address', async (c) => {
 
   try {
     const info = await getAddress(address)
+    const transactions = await getRecentTransactions(address)
 
     const lovelace = info.amount.find((a) => a.unit === 'lovelace')?.quantity ?? '0'
     const peerA = info.amount.find((a) => a.unit.includes('peerA'))?.quantity ?? '0'

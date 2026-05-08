@@ -6,6 +6,7 @@ export function usePapers() {
   const [papers, setPapers] = useState<Paper[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -19,7 +20,7 @@ export function usePapers() {
 
       if (res.error) {
         setError(res.error);
-        setPapers([]);
+        // Preserve last successful results so UI doesn't go blank on transient failures.
       } else {
         // API now returns { papers, total, page, limit }
         setPapers(res.data?.papers ?? []);
@@ -31,7 +32,18 @@ export function usePapers() {
     return () => {
       cancelled = true;
     };
+  }, [reloadTick]);
+
+  useEffect(() => {
+    const interval = globalThis.setInterval(() => {
+      setReloadTick((tick) => tick + 1);
+    }, 15000);
+    return () => {
+      globalThis.clearInterval(interval);
+    };
   }, []);
 
-  return { papers, loading, error };
+  const reload = () => setReloadTick((tick) => tick + 1);
+
+  return { papers, loading, error, reload };
 }
