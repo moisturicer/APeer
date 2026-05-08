@@ -8,6 +8,8 @@ export type ConfirmationStatus =
   | 'confirmed'
   | 'confirmation_timeout';
 
+export type MintStatus = 'eligible' | 'minted' | 'failed';
+
 export interface Author {
   id: string;
   address: string;
@@ -28,6 +30,9 @@ export interface Paper {
   status: 'Reviewed' | 'Under Review' | 'Disputed' | 'Awaiting Review';
   confirmationStatus?: ConfirmationStatus;
   txHash?: string | null;
+  mintStatus?: MintStatus;
+  mintAmount?: number | null;
+  mintTxHash?: string | null;
   sha256?: string;
   reviewCount: number;
   views: number;
@@ -82,6 +87,9 @@ export interface ConfirmPaperResponse {
   txHash: string;
   confirmationStatus: ConfirmationStatus;
   message: string;
+  eligibleForMint?: boolean;
+  mintAmount?: number;
+  mintReason?: string;
 }
 
 export interface PapersListResponse {

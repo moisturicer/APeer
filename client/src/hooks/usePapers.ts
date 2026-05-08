@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import type { Paper } from '@/types';
 
@@ -7,12 +7,16 @@ export function usePapers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const hasLoadedOnceRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
-      setLoading(true);
+      if (!hasLoadedOnceRef.current) {
+        setLoading(true);
+      }
       setError(null);
       const res = await api.papers();
 
@@ -24,8 +28,10 @@ export function usePapers() {
       } else {
         // API now returns { papers, total, page, limit }
         setPapers(res.data?.papers ?? []);
+        setLastSyncedAt(new Date().toISOString());
       }
       setLoading(false);
+      hasLoadedOnceRef.current = true;
     }
 
     void load();
@@ -45,5 +51,5 @@ export function usePapers() {
 
   const reload = () => setReloadTick((tick) => tick + 1);
 
-  return { papers, loading, error, reload };
+  return { papers, loading, error, reload, lastSyncedAt };
 }

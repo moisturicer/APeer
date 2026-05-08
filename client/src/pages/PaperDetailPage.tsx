@@ -12,6 +12,18 @@ interface PaperDetailPageProps {
 }
 
 const TABS = ['Abstract', 'Full Paper', 'Reviews', 'Disputes', 'History'];
+const CONFIRMATION_LABELS: Record<NonNullable<Paper['confirmationStatus']>, string> = {
+  pending_anchor: 'Awaiting Anchor',
+  pending_confirmation: 'Confirming',
+  confirmed: 'Confirmed',
+  confirmation_timeout: 'Confirmation Timeout',
+};
+const MINT_LABELS: Record<NonNullable<Paper['mintStatus']>, string> = {
+  eligible: 'Mint Eligible',
+  minted: 'Minted',
+  failed: 'Mint Failed',
+};
+const IPFS_GATEWAY_URL = import.meta.env.VITE_IPFS_GATEWAY_URL ?? 'https://ipfs.io/ipfs';
 
 export function PaperDetailPage({ paper, reviews }: PaperDetailPageProps) {
   const [activeTab, setActiveTab] = useState('Abstract');
@@ -40,6 +52,32 @@ export function PaperDetailPage({ paper, reviews }: PaperDetailPageProps) {
               <span className="text-xs font-mono text-zinc-400 bg-zinc-100 rounded px-2 py-1">
                 IPFS: {paper.ipfsHash}
               </span>
+              {paper.confirmationStatus && (
+                <span
+                  className={`text-[10px] font-semibold uppercase tracking-wide rounded px-2 py-1 border ${
+                    paper.confirmationStatus === 'confirmed'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                      : paper.confirmationStatus === 'confirmation_timeout'
+                      ? 'bg-red-50 border-red-200 text-red-700'
+                      : 'bg-amber-50 border-amber-200 text-amber-700'
+                  }`}
+                >
+                  {CONFIRMATION_LABELS[paper.confirmationStatus]}
+                </span>
+              )}
+              {paper.mintStatus && (
+                <span
+                  className={`text-[10px] font-semibold uppercase tracking-wide rounded px-2 py-1 border ${
+                    paper.mintStatus === 'minted'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                      : paper.mintStatus === 'failed'
+                      ? 'bg-red-50 border-red-200 text-red-700'
+                      : 'bg-amber-50 border-amber-200 text-amber-700'
+                  }`}
+                >
+                  {MINT_LABELS[paper.mintStatus]}
+                </span>
+              )}
               <span className="text-xs text-zinc-400 italic">Submitted {paper.date}</span>
             </div>
             <h1 className="text-4xl font-semibold mb-8 tracking-tight leading-tight">{paper.title}</h1>
@@ -127,7 +165,20 @@ export function PaperDetailPage({ paper, reviews }: PaperDetailPageProps) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
               >
-                <EmptyState icon={MessageSquare} message="Full paper rendering is not available yet. Open from IPFS CID." />
+                <div className="text-center py-16 bg-zinc-50 rounded-3xl border-2 border-dashed border-zinc-200">
+                  <MessageSquare className="w-8 h-8 text-zinc-300 mx-auto mb-4" />
+                  <p className="text-zinc-500 font-medium mb-6">
+                    Full paper rendering is not available yet.
+                  </p>
+                  <a
+                    href={`${IPFS_GATEWAY_URL}/${paper.ipfsHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-[color:var(--color-primary)] text-white text-sm font-semibold hover:bg-[color:var(--color-primary-light)] transition-colors"
+                  >
+                    Open Paper on IPFS
+                  </a>
+                </div>
               </motion.div>
             )}
 
@@ -243,6 +294,18 @@ export function PaperDetailPage({ paper, reviews }: PaperDetailPageProps) {
                   {paper.rewardPool / 2}
                 </span>
               </div>
+              {paper.mintStatus && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-zinc-500">Mint Reward</span>
+                  <span className="text-sm font-semibold">
+                    {paper.mintStatus === 'eligible'
+                      ? `Eligible${paper.mintAmount ? ` • ${paper.mintAmount} peerA` : ''}`
+                      : paper.mintStatus === 'minted'
+                      ? `Minted${paper.mintAmount ? ` • ${paper.mintAmount} peerA` : ''}`
+                      : 'Mint failed'}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between items-center">
                 <span className="text-sm text-zinc-500">Staked ADA</span>
                 <span className="text-sm font-semibold">{primaryAuthor ? '1,250 tADA' : '—'}</span>

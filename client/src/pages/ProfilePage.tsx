@@ -11,7 +11,21 @@ interface ProfilePageProps {
   walletName: string | null;
   onPublish: () => void;
   onSelectPaper: (paper: Paper) => void;
+  lastSyncedAt?: string | null;
 }
+
+const CONFIRMATION_LABELS: Record<NonNullable<Paper['confirmationStatus']>, string> = {
+  pending_anchor: 'Awaiting Anchor',
+  pending_confirmation: 'Confirming',
+  confirmed: 'Confirmed',
+  confirmation_timeout: 'Confirmation Timeout',
+};
+
+const MINT_LABELS: Record<NonNullable<Paper['mintStatus']>, string> = {
+  eligible: 'Mint Eligible',
+  minted: 'Minted',
+  failed: 'Mint Failed',
+};
 
 export function ProfilePage({
   papers,
@@ -20,6 +34,7 @@ export function ProfilePage({
   walletName,
   onPublish,
   onSelectPaper,
+  lastSyncedAt = null,
 }: Readonly<ProfilePageProps>) {
   const { data: walletInfo, loading: walletLoading, error: walletError } = useWalletInfo(walletAddress);
   const [displayName, setDisplayName] = useState('Researcher');
@@ -155,6 +170,18 @@ export function ProfilePage({
               <PlusCircle className="w-4 h-4" /> Publish New Paper
             </button>
           </div>
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-[11px]">
+            <div className="flex items-center gap-2 text-zinc-500">
+              <span className="font-semibold text-zinc-400 uppercase tracking-wide">Status legend:</span>
+              <span className="px-2 py-0.5 rounded-full border bg-amber-50 border-amber-200 text-amber-700">Awaiting Anchor</span>
+              <span className="px-2 py-0.5 rounded-full border bg-amber-50 border-amber-200 text-amber-700">Confirming</span>
+              <span className="px-2 py-0.5 rounded-full border bg-emerald-50 border-emerald-200 text-emerald-700">Confirmed</span>
+              <span className="px-2 py-0.5 rounded-full border bg-red-50 border-red-200 text-red-700">Confirmation Timeout</span>
+            </div>
+            <div className="text-zinc-400">
+              Last sync: {lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString() : '—'}
+            </div>
+          </div>
 
           {/* Stats grid */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -274,8 +301,37 @@ export function ProfilePage({
                         <h4 className="font-semibold text-zinc-900 group-hover:text-[color:var(--color-primary)] transition-colors">
                           {paper.title}
                         </h4>
-                        <div className="text-xs text-zinc-400 mt-1">
-                          {paper.date} • {paper.citations} citations • {paper.reviewCount} reviews
+                        <div className="text-xs text-zinc-400 mt-1 flex flex-wrap items-center gap-2">
+                          <span>{paper.date}</span>
+                          <span>• {paper.citations} citations</span>
+                          <span>• {paper.reviewCount} reviews</span>
+                          <span>• {paper.views} views</span>
+                          {paper.confirmationStatus && (
+                            <span
+                              className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold ${
+                                paper.confirmationStatus === 'confirmed'
+                                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                  : paper.confirmationStatus === 'confirmation_timeout'
+                                  ? 'bg-red-50 border-red-200 text-red-700'
+                                  : 'bg-amber-50 border-amber-200 text-amber-700'
+                              }`}
+                            >
+                              {CONFIRMATION_LABELS[paper.confirmationStatus]}
+                            </span>
+                          )}
+                          {paper.mintStatus && (
+                            <span
+                              className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold ${
+                                paper.mintStatus === 'minted'
+                                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                  : paper.mintStatus === 'failed'
+                                  ? 'bg-red-50 border-red-200 text-red-700'
+                                  : 'bg-amber-50 border-amber-200 text-amber-700'
+                              }`}
+                            >
+                              {MINT_LABELS[paper.mintStatus]}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <ChevronRight className="w-4 h-4 text-zinc-300 group-hover:translate-x-1 transition-transform" />

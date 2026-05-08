@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { getAddress, mapBlockfrostError } from '../lib/blockfrost'
+import { getAddress, logBlockfrostError, mapBlockfrostError } from '../lib/blockfrost'
 
 const wallet = new Hono()
 const BLOCKFROST_BASE_URL = 'https://cardano-preprod.blockfrost.io/api/v0'
@@ -34,6 +34,7 @@ wallet.get('/:address', async (c) => {
     })
   } catch (err) {
     const { status, message } = mapBlockfrostError(err)
+    logBlockfrostError({ operation: 'addresses(walletRoute)', address, error: err })
     if (status === 404) {
       return c.json({
         success: true,
@@ -47,7 +48,6 @@ wallet.get('/:address', async (c) => {
         },
       })
     }
-    console.error('[wallet] Blockfrost error:', message)
     return c.json({ success: false, error: message }, status as 400 | 500 | 502 | 503 | 504)
   }
 })

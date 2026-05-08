@@ -41,11 +41,40 @@ export async function getTx(txHash: string) {
 
 export function mapBlockfrostError(err: unknown): { status: number; message: string } {
   const msg = err instanceof Error ? err.message : String(err)
-  if (msg.includes('404')) return { status: 404, message: 'Not found on Blockfrost' }
-  if (msg.includes('503')) return { status: 503, message: 'Blockfrost service unavailable' }
-  if (msg.includes('502')) return { status: 502, message: 'Blockfrost bad gateway' }
-  if (msg.includes('504')) return { status: 504, message: 'Blockfrost gateway timeout' }
-  return { status: 500, message: msg }
+
+  if (msg.includes('404')) {
+    return { status: 404, message: 'Address or resource not found on chain' }
+  }
+  if (msg.includes('402') || msg.includes('429')) {
+    return { status: 503, message: 'Blockchain indexer temporarily unavailable' }
+  }
+  if (msg.includes('503')) {
+    return { status: 503, message: 'Blockchain indexer temporarily unavailable' }
+  }
+  if (msg.includes('502') || msg.includes('500')) {
+    return { status: 502, message: 'Blockchain indexer error' }
+  }
+  if (msg.includes('504') || msg.toLowerCase().includes('timeout')) {
+    return { status: 504, message: 'Blockchain indexer timeout' }
+  }
+
+  return { status: 502, message: 'Blockchain indexer error' }
+}
+
+export function logBlockfrostError(context: {
+  operation: string
+  address?: string
+  txHash?: string
+  error: unknown
+}): void {
+  const details = {
+    operation: context.operation,
+    address: context.address,
+    txHash: context.txHash,
+    timestamp: new Date().toISOString(),
+    rawError: context.error instanceof Error ? context.error.message : String(context.error),
+  }
+  console.error('[blockfrost] request failed', details)
 }
 
 // ── Health check (existing) ───────────────────────────────────────────────────
@@ -60,7 +89,8 @@ export async function checkBlockfrostHealth(): Promise<{
     const latest = await blockfrost.blocksLatest()
     return { ok: true, network: NETWORK, latestBlock: latest.height ?? undefined }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    logBlockfrostError({ operation: 'blocksLatest(health)', error: err })
+    const { message } = mapBlockfrostError(err)
     return { ok: false, network: NETWORK, error: message }
   }
 }

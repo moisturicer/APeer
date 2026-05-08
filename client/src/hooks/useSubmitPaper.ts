@@ -3,6 +3,7 @@ import { api } from '@/lib/api'
 import { signNonce } from '@/lib/cip30'
 import { mintAnchorTx } from '@/lib/mintAnchorTx'
 import type { ReviewMode } from '@/types'
+import type { MetadataForTx } from '@/types'
 
 export type SubmitState =
   | 'idle'
@@ -30,6 +31,12 @@ export function useSubmitPaper(walletName: string | null) {
   const [error, setError] = useState<string | null>(null)
   const [cid, setCid] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<string | null>(null)
+  const [metadataForTx, setMetadataForTx] = useState<MetadataForTx | null>(null)
+  const [mintEligibility, setMintEligibility] = useState<{
+    eligibleForMint: boolean
+    mintAmount?: number
+    mintReason?: string
+  } | null>(null)
 
   const reset = useCallback(() => {
     setState('idle')
@@ -37,6 +44,8 @@ export function useSubmitPaper(walletName: string | null) {
     setError(null)
     setCid(null)
     setTxHash(null)
+    setMetadataForTx(null)
+    setMintEligibility(null)
   }, [])
 
   const submit = useCallback(
@@ -88,6 +97,7 @@ export function useSubmitPaper(walletName: string | null) {
         }
         const { cid: newCid, metadataForTx } = submitRes.data
         setCid(newCid)
+        setMetadataForTx(metadataForTx)
 
         // 4 — Build and sign the CIP-25 anchoring transaction
         setState('awaitingTxSign')
@@ -115,20 +125,26 @@ export function useSubmitPaper(walletName: string | null) {
         if (confirmRes.error || !confirmRes.data) {
           throw new Error(confirmRes.error ?? 'Failed to register anchoring transaction')
         }
+        setMintEligibility({
+          eligibleForMint: confirmRes.data.eligibleForMint ?? false,
+          mintAmount: confirmRes.data.mintAmount,
+          mintReason: confirmRes.data.mintReason,
+        })
 
         setState('confirming')
         setProgress('Paper anchored! Waiting for on-chain confirmation (≥ 3 blocks)…')
 
-        // Server handles tx tracking; poll the paper status so UI reflects actual confirmation progress.
+        // Server handles tx tracking; poll via list endpoint to avoid inflating per-paper views.
         let confirmed = false
         for (let attempt = 0; attempt < 36; attempt += 1) {
           await new Promise(resolve => setTimeout(resolve, 5000))
-          const paperRes = await api.getPaper(newCid)
-          if (paperRes.error || !paperRes.data) {
+          const papersRes = await api.papers({ q: newCid, limit: 20 })
+          if (papersRes.error || !papersRes.data) {
             continue
           }
 
-          const status = paperRes.data.confirmationStatus
+          const match = papersRes.data.papers.find((p) => p.cid === newCid || p.id === newCid)
+          const status = match?.confirmationStatus
           if (status === 'confirmed') {
             confirmed = true
             break
@@ -154,5 +170,5 @@ export function useSubmitPaper(walletName: string | null) {
     [walletName]
   )
 
-  return { state, progress, error, cid, txHash, submit, reset }
+  return { state, progress, error, cid, txHash, metadataForTx, mintEligibility, submit, reset }
 }

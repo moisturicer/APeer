@@ -35,3 +35,14 @@ export function consumeNonce(address: string, nonce: string): boolean {
 
   return consume()
 }
+
+export function isNonceAvailable(address: string, nonce: string): boolean {
+  const db = getDb()
+  const row = db
+    .query<{ used: number; expires_at: number }, [string, string]>(
+      'SELECT used, expires_at FROM auth_nonces WHERE address = ? AND nonce = ?'
+    )
+    .get(address, nonce)
+
+  return !!row && row.used === 0 && row.expires_at >= Date.now()
+}

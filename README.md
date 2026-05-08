@@ -102,6 +102,18 @@ bun run dev:server   # API → http://localhost:3000
 bun run dev:client   # UI  → http://localhost:5173
 ```
 
+### 3.1 (Optional) Configure client IPFS gateway
+
+Create `client/.env` (or copy from `client/.env.example`) and set:
+
+```env
+VITE_IPFS_GATEWAY_URL=https://dweb.link/ipfs
+VITE_API_BASE_URL=http://localhost:3000
+VITE_ENABLE_MINT_REWARDS=false
+```
+
+Default fallback in the UI is `https://ipfs.io/ipfs`. If you see intermittent `504 Gateway Timeout` on IPFS reads, switch to a different public gateway like `dweb.link`.
+
 ### 4. Verify the setup
 
 ```bash
@@ -141,6 +153,9 @@ If `blockfrost.ok` is `false`, check your `.env` key.
 | `PORT` | No (default: 3000) | API server port |
 | `NODE_ENV` | No (default: development) | Runtime environment |
 | `PINATA_JWT` | No (Increment 2) | Pinata JWT for IPFS pinning |
+| `VITE_IPFS_GATEWAY_URL` | No (client) | Frontend IPFS gateway base URL used by the Full Paper tab |
+| `VITE_API_BASE_URL` | No (client) | Optional absolute API host; defaults to Vite proxy `/api` |
+| `VITE_ENABLE_MINT_REWARDS` | No (client) | Enables mint eligibility UI scaffolding while backend support is in progress |
 
 See `server/.env.example` for the full template.
 

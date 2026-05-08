@@ -186,9 +186,13 @@ papers.post('/', walletAuth(), async (c) => {
       },
     })
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    console.error('[papers] POST error:', msg)
-    return c.json({ success: false, error: msg }, 500)
+    console.error('[papers] POST error', {
+      operation: 'submitPaper',
+      submitter,
+      timestamp: new Date().toISOString(),
+      rawError: err instanceof Error ? err.message : String(err),
+    })
+    return c.json({ success: false, error: 'Paper submission failed. Please try again.' }, 500)
   }
 })
 

@@ -28,7 +28,13 @@ type AvailableWallet = { id: string; name: string; icon: string };
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { papers, loading, error: papersError, reload: reloadPapers } = usePapers();
+  const {
+    papers,
+    loading,
+    error: papersError,
+    reload: reloadPapers,
+    lastSyncedAt,
+  } = usePapers();
   const [wallets, setWallets] = useState<AvailableWallet[]>([]);
   const {
     connected,
@@ -125,13 +131,14 @@ export default function App() {
                     loading={loading}
                     error={papersError}
                     onReload={reloadPapers}
+                    lastSyncedAt={lastSyncedAt}
                     onSelectPaper={(paper) => navigate(`/papers/${paper.id}`)}
                   />
                 }
               />
               <Route
                 path="/papers/:paperId"
-                element={<PaperDetailRoute papers={papers} loading={loading} />}
+                element={<PaperDetailRoute papers={papers} loading={loading} reloadPapers={reloadPapers} />}
               />
               <Route
                 path="/profile"
@@ -143,6 +150,7 @@ export default function App() {
                     walletName={name}
                     onPublish={() => navigate("/submit")}
                     onSelectPaper={(paper) => navigate(`/papers/${paper.id}`)}
+                    lastSyncedAt={lastSyncedAt}
                   />
                 }
               />
@@ -173,7 +181,8 @@ export default function App() {
 function PaperDetailRoute({
   papers,
   loading,
-}: Readonly<{ papers: Paper[]; loading: boolean }>) {
+  reloadPapers,
+}: Readonly<{ papers: Paper[]; loading: boolean; reloadPapers: () => void }>) {
   const { paperId } = useParams();
   const navigate = useNavigate();
   const [paper, setPaper] = useState<Paper | null>(null);
@@ -201,7 +210,53 @@ function PaperDetailRoute({
     return () => {
       cancelled = true;
     };
+  }, [paperId]);
+
+  // Keep detail state aligned with the refreshed papers list while avoiding view inflation.
+  useEffect(() => {
+    if (!paperId) return;
+    const fromList = papers.find((entry) => entry.id === paperId);
+    if (!fromList) return;
+    setPaper((current) => {
+      if (!current || current.id !== fromList.id) return current;
+      const changed =
+        current.views !== fromList.views ||
+        current.confirmationStatus !== fromList.confirmationStatus ||
+        current.status !== fromList.status ||
+        current.txHash !== fromList.txHash ||
+        current.mintStatus !== fromList.mintStatus ||
+        current.mintAmount !== fromList.mintAmount ||
+        current.mintTxHash !== fromList.mintTxHash;
+
+      if (!changed) return current;
+
+      // Keep detail view stable and only patch live fields from list polling.
+      return {
+        ...current,
+        views: fromList.views,
+        confirmationStatus: fromList.confirmationStatus,
+        status: fromList.status,
+        txHash: fromList.txHash,
+        mintStatus: fromList.mintStatus,
+        mintAmount: fromList.mintAmount,
+        mintTxHash: fromList.mintTxHash,
+      };
+    });
   }, [paperId, papers]);
+
+  // Poll list endpoint while paper confirmation is still in progress.
+  useEffect(() => {
+    if (!paper?.confirmationStatus) return;
+    if (!['pending_anchor', 'pending_confirmation'].includes(paper.confirmationStatus)) return;
+
+    const interval = globalThis.setInterval(() => {
+      reloadPapers();
+    }, 10000);
+
+    return () => {
+      globalThis.clearInterval(interval);
+    };
+  }, [paper?.confirmationStatus, reloadPapers]);
 
   if (loading || detailLoading) {
     return (

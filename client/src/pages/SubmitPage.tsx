@@ -10,6 +10,7 @@ import type { ReviewMode } from '@/types';
 const MAX_FILE_MB = 50;
 const REQUIRED_NETWORK = 'preprod';
 const MIN_BALANCE_LOVELACE = 3_000_000n;
+const ENABLE_MINT_UI = (import.meta.env.VITE_ENABLE_MINT_REWARDS ?? 'false').toLowerCase() === 'true';
 
 interface SubmitPageProps {
   onComplete: () => void;
@@ -22,7 +23,17 @@ interface SubmitPageProps {
 export function SubmitPage({ onComplete, connected, address, walletName, networkId }: SubmitPageProps) {
   const { data: walletInfo, loading: walletInfoLoading, error: walletInfoError } = useWalletInfo(address);
 
-  const { state, progress, error: submitError, cid, txHash, submit, reset } = useSubmitPaper(walletName);
+  const {
+    state,
+    progress,
+    error: submitError,
+    cid,
+    txHash,
+    metadataForTx,
+    mintEligibility,
+    submit,
+    reset,
+  } = useSubmitPaper(walletName);
 
   const [step, setStep]             = useState(1);
   const [file, setFile]             = useState<File | null>(null);
@@ -178,7 +189,7 @@ export function SubmitPage({ onComplete, connected, address, walletName, network
           <h1 className="text-3xl font-bold mb-4">Submission Successful</h1>
           <p className="text-zinc-500 mb-8 leading-relaxed">
             Your paper is pinned to IPFS and the anchoring transaction is being confirmed on Cardano.
-            It will appear in Discover once it reaches 3 block confirmations.
+            Status is now <span className="font-semibold">pending_confirmation</span> and appears in Discover once it reaches 3 block confirmations.
           </p>
           <div className="bg-zinc-50 rounded-xl p-6 mb-8 text-left space-y-3">
             {txHash && (
@@ -191,6 +202,30 @@ export function SubmitPage({ onComplete, connected, address, walletName, network
               <div className="flex justify-between text-xs gap-4">
                 <span className="text-zinc-400 font-bold uppercase tracking-widest shrink-0">IPFS Content ID</span>
                 <span className="font-mono text-zinc-600 select-all break-all">{cid}</span>
+              </div>
+            )}
+            {metadataForTx && (
+              <details className="rounded-lg border border-zinc-200 bg-white p-3">
+                <summary className="cursor-pointer text-[11px] font-semibold text-zinc-600 uppercase tracking-wider">
+                  View Anchored Metadata Payload
+                </summary>
+                <pre className="mt-3 text-[10px] leading-relaxed text-zinc-600 overflow-auto whitespace-pre-wrap break-words">
+                  {JSON.stringify(metadataForTx, null, 2)}
+                </pre>
+              </details>
+            )}
+            {ENABLE_MINT_UI && mintEligibility && (
+              <div className="flex justify-between text-xs gap-4">
+                <span className="text-zinc-400 font-bold uppercase tracking-widest shrink-0">Mint Reward</span>
+                <span
+                  className={`font-semibold ${
+                    mintEligibility.eligibleForMint ? 'text-emerald-700' : 'text-zinc-500'
+                  }`}
+                >
+                  {mintEligibility.eligibleForMint
+                    ? `Eligible${mintEligibility.mintAmount ? ` • ${mintEligibility.mintAmount} peerA` : ''}`
+                    : mintEligibility.mintReason ?? 'Not available yet'}
+                </span>
               </div>
             )}
           </div>
@@ -417,6 +452,9 @@ export function SubmitPage({ onComplete, connected, address, walletName, network
                         </div>
                       ))}
                     </div>
+                    <p className="text-[10px] text-zinc-400 leading-relaxed">
+                      Note: backend prepends the submitter wallet as primary author during persistence.
+                    </p>
                   </FormField>
                 </div>
               </div>
@@ -453,13 +491,17 @@ export function SubmitPage({ onComplete, connected, address, walletName, network
                     <MetaRow label="Paper" value={file?.name ?? '—'} />
                     <MetaRow label="Title" value={title || '—'} />
                     <MetaRow label="Review Mode" value={reviewMode} />
+                    <MetaRow
+                      label="Authors"
+                      value={(authors.length > 0 ? authors : (address ? [address] : [])).join(', ') || '—'}
+                    />
                     <MetaRow label="Keywords" value={tags.join(', ') || '—'} />
                   </div>
                   <div className="flex items-start gap-4 p-4 bg-[color:var(--color-primary)]/5 rounded-xl border border-[color:var(--color-primary)]/10">
                     <ShieldCheck className="w-5 h-5 text-[color:var(--color-primary)] shrink-0 mt-0.5" />
                     <p className="text-xs text-[color:var(--color-primary)]/80 leading-relaxed">
                       Submission pins your paper to IPFS and anchors the CID on Cardano preprod via a metadata transaction.
-                      Your wallet will be prompted twice: once to authenticate, once to sign the anchoring transaction.
+                      Your wallet will be prompted twice: first to sign a one-time auth nonce, then to sign the anchoring transaction.
                     </p>
                   </div>
                 </div>
