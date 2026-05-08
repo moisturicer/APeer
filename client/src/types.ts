@@ -120,7 +120,14 @@ export interface WalletInfo {
   };
   stakeAddress: string | null;
   network: string;
+  transactions?: WalletTransaction[];
   note?: string;
+}
+
+export interface WalletTransaction {
+  txHash: string;
+  blockHeight: number;
+  blockTime: string;
 }
 
 export interface ApiResponse<T> {

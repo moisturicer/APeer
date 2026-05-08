@@ -16,9 +16,12 @@
     "setup": "bun install"
   },
   "devDependencies": {
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vite-plugin-top-level-await": "^1.6.0",
+    "vite-plugin-wasm": "^3.6.0"
   },
   "dependencies": {
+    "@blockfrost/blockfrost-js": "^6.1.1",
     "@meshsdk/core": "^1.9.0-beta.102",
     "motion": "^12.38.0",
     "vite-plugin-node-polyfills": "^0.26.0"
