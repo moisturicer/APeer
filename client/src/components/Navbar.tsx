@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Library, Globe, PlusCircle, Gavel, X } from 'lucide-react';
+import { Library, Globe, PlusCircle, Gavel, ShieldCheck, X } from 'lucide-react';
 import type { View } from '../types';
 
 type AvailableWallet = { id: string; name: string; icon: string };
@@ -15,6 +15,7 @@ interface NavbarProps {
   onClearWalletError: () => void;
   onConnect: (walletId: string) => Promise<void>;
   onDisconnect: () => void;
+  reviewOpportunitiesCount?: number;
 }
 
 export function Navbar({
@@ -28,6 +29,7 @@ export function Navbar({
   onClearWalletError,
   onConnect,
   onDisconnect,
+  reviewOpportunitiesCount = 0,
 }: Readonly<NavbarProps>) {
   const [showWallets, setShowWallets] = useState(false);
 
@@ -52,18 +54,24 @@ export function Navbar({
           {[
             { id: 'discover',    label: 'Discover',    icon: Globe },
             { id: 'submit',      label: 'Publish',     icon: PlusCircle },
+            { id: 'reviewer',    label: 'Reviewer',    icon: ShieldCheck },
             { id: 'governance',  label: 'Governance',  icon: Gavel },
           ].map((item) => (
             <button
               key={item.id}
               onClick={() => setView(item.id as View)}
-              className={`flex items-center gap-2 text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 text-sm font-medium transition-colors relative ${
                 activeView === item.id
                   ? 'text-[color:var(--color-primary)]'
                   : 'text-zinc-500 hover:text-zinc-800'
               }`}
             >
               {item.label}
+              {item.id === 'reviewer' && reviewOpportunitiesCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                  {reviewOpportunitiesCount > 9 ? '9+' : reviewOpportunitiesCount}
+                </span>
+              )}
             </button>
           ))}
         </div>
