@@ -7,6 +7,9 @@ import type { Paper } from '../types';
 interface DiscoverPageProps {
   papers: Paper[];
   loading?: boolean;
+  error?: string | null;
+  onReload?: () => void;
+  lastSyncedAt?: string | null;
   onSelectPaper: (p: Paper) => void;
 }
 
@@ -17,7 +20,27 @@ const STATUS_LABELS: Record<Paper['status'], string> = {
   'Awaiting Review': 'Awaiting Review',
 };
 
-export function DiscoverPage({ papers, loading = false, onSelectPaper }: DiscoverPageProps) {
+const CONFIRMATION_LABELS: Record<NonNullable<Paper['confirmationStatus']>, string> = {
+  pending_anchor: 'Awaiting Anchor',
+  pending_confirmation: 'Confirming',
+  confirmed: 'Confirmed',
+  confirmation_timeout: 'Confirmation Timeout',
+};
+
+const MINT_LABELS: Record<NonNullable<Paper['mintStatus']>, string> = {
+  eligible: 'Mint Eligible',
+  minted: 'Minted',
+  failed: 'Mint Failed',
+};
+
+export function DiscoverPage({
+  papers,
+  loading = false,
+  error = null,
+  onReload,
+  lastSyncedAt = null,
+  onSelectPaper,
+}: Readonly<DiscoverPageProps>) {
   const [query, setQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedStatuses, setSelectedStatuses] = useState<Paper['status'][]>([]);
@@ -124,17 +147,42 @@ export function DiscoverPage({ papers, loading = false, onSelectPaper }: Discove
             </select>
           </div>
         </div>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-[11px]">
+          <div className="flex items-center gap-2 text-zinc-500">
+            <span className="font-semibold text-zinc-400 uppercase tracking-wide">Status legend:</span>
+            <span className="px-2 py-0.5 rounded-full border bg-amber-50 border-amber-200 text-amber-700">Awaiting Anchor</span>
+            <span className="px-2 py-0.5 rounded-full border bg-amber-50 border-amber-200 text-amber-700">Confirming</span>
+            <span className="px-2 py-0.5 rounded-full border bg-emerald-50 border-emerald-200 text-emerald-700">Confirmed</span>
+            <span className="px-2 py-0.5 rounded-full border bg-red-50 border-red-200 text-red-700">Confirmation Timeout</span>
+          </div>
+          <div className="text-zinc-400">
+            Last sync: {lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString() : '—'}
+          </div>
+        </div>
 
         <div className="space-y-4">
           {loading && <p className="text-sm text-zinc-400">Loading papers...</p>}
+          {!loading && error && (
+            <div className="p-4 border border-amber-200 bg-amber-50 rounded-xl text-sm text-amber-700 flex items-center justify-between gap-4">
+              <span>Unable to refresh papers: {error}</span>
+              {onReload && (
+                <button
+                  type="button"
+                  onClick={onReload}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-amber-200 hover:bg-amber-100 transition-colors"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          )}
           {!loading && filteredPapers.length === 0 && (
             <p className="text-sm text-zinc-400">No papers match your current filters.</p>
           )}
           {filteredPapers.map((paper) => (
             <motion.div
               key={paper.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
+              initial={false}
               onClick={() => onSelectPaper(paper)}
               className="p-6 bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-xl card-shadow hover:border-[color:var(--color-primary)]/30 transition-all group cursor-pointer"
             >
@@ -144,6 +192,32 @@ export function DiscoverPage({ papers, loading = false, onSelectPaper }: Discove
                   {paper.status === 'Under Review' && <Badge variant="amber">Under Review</Badge>}
                   {paper.status === 'Disputed' && <Badge variant="red">Disputed</Badge>}
                   {paper.status === 'Awaiting Review' && <Badge variant="gray">Awaiting Review</Badge>}
+                  {paper.confirmationStatus && (
+                    <Badge
+                      variant={
+                        paper.confirmationStatus === 'confirmed'
+                          ? 'teal'
+                          : paper.confirmationStatus === 'confirmation_timeout'
+                          ? 'red'
+                          : 'amber'
+                      }
+                    >
+                      {CONFIRMATION_LABELS[paper.confirmationStatus]}
+                    </Badge>
+                  )}
+                  {paper.mintStatus && (
+                    <Badge
+                      variant={
+                        paper.mintStatus === 'minted'
+                          ? 'teal'
+                          : paper.mintStatus === 'failed'
+                          ? 'red'
+                          : 'amber'
+                      }
+                    >
+                      {MINT_LABELS[paper.mintStatus]}
+                    </Badge>
+                  )}
                 </div>
                 <div className="flex items-center gap-1.5 text-[color:var(--color-accent)]">
                   <Gift className="w-4 h-4" />
@@ -156,13 +230,19 @@ export function DiscoverPage({ papers, loading = false, onSelectPaper }: Discove
               </h3>
 
               <div className="flex items-center gap-3 mb-4">
-                <div className="text-xs font-mono text-zinc-500 bg-zinc-50 px-2 py-0.5 rounded border border-zinc-100">
-                  {paper.authors[0].address.slice(0, 8)}...
-                </div>
-                <div className="flex items-center gap-1 text-[10px] font-bold text-[color:var(--color-primary)] px-1.5 py-0.5 rounded bg-[color:var(--color-primary)]/5 uppercase tracking-wider">
-                  <TrendingUp className="w-3 h-3" />
-                  Rep {paper.authors[0].reputation}
-                </div>
+                {paper.authors[0] ? (
+                  <>
+                    <div className="text-xs font-mono text-zinc-500 bg-zinc-50 px-2 py-0.5 rounded border border-zinc-100">
+                      {paper.authors[0].address.slice(0, 8)}...
+                    </div>
+                    <div className="flex items-center gap-1 text-[10px] font-bold text-[color:var(--color-primary)] px-1.5 py-0.5 rounded bg-[color:var(--color-primary)]/5 uppercase tracking-wider">
+                      <TrendingUp className="w-3 h-3" />
+                      Rep {paper.authors[0].reputation}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-xs text-zinc-400">Unknown author</div>
+                )}
                 <span className="text-zinc-300">•</span>
                 <span className="text-xs text-zinc-400 font-medium italic">{paper.date}</span>
               </div>

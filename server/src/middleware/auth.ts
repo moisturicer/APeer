@@ -1,5 +1,5 @@
 import { createMiddleware } from 'hono/factory'
-import { consumeNonce } from '../lib/nonces'
+import { consumeNonce, isNonceAvailable } from '../lib/nonces'
 import { verifyCip30Signature } from '../lib/auth'
 import type { HonoAppEnv } from '../types'
 
@@ -41,13 +41,17 @@ export function walletAuth() {
       )
     }
 
-    if (!consumeNonce(address, nonce)) {
+    if (!isNonceAvailable(address, nonce)) {
       return c.json({ success: false, error: 'Invalid, expired, or already-used nonce' }, 401)
     }
 
     const valid = await verifyCip30Signature({ address, nonce, signature, key })
     if (!valid) {
       return c.json({ success: false, error: 'Signature verification failed' }, 401)
+    }
+
+    if (!consumeNonce(address, nonce)) {
+      return c.json({ success: false, error: 'Invalid, expired, or already-used nonce' }, 401)
     }
 
     c.set('walletAddress', address)
