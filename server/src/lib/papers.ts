@@ -65,7 +65,12 @@ export function insertPaper(row: PaperRow): void {
 
 export function setAnchorTx(cid: string, txHash: string, anchoredAt: number): void {
   getDb().run(
-    `UPDATE papers SET tx_hash = ?, anchored_at = ?, confirmation_status = 'confirmed' WHERE cid = ?`,
+    `UPDATE papers
+     SET tx_hash = ?,
+         anchored_at = ?,
+         confirmation_status = 'confirmed',
+         status = 'Awaiting Review'
+     WHERE cid = ?`,
     [txHash, anchoredAt, cid]
   )
 }
@@ -94,6 +99,13 @@ export function getPaperByCid(cid: string): PaperRow | null {
   return raw ? deserialize(raw) : null
 }
 
+export function getPaperBySha256(sha256: string): PaperRow | null {
+  const raw = getDb()
+    .query<RawRow, [string]>('SELECT * FROM papers WHERE sha256 = ?')
+    .get(sha256)
+  return raw ? deserialize(raw) : null
+}
+
 export function listPendingConfirmation(): Array<{ cid: string; tx_hash: string | null }> {
   return getDb()
     .query<{ cid: string; tx_hash: string | null }, []>(
@@ -116,7 +128,7 @@ export function listPapers(opts: ListPapersOptions = {}): { papers: PaperRow[]; 
   const db = getDb()
   const { page = 1, limit = 20, tag, author, status, sort = 'date', q } = opts
 
-  const conditions: string[] = [`confirmation_status = 'confirmed'`]
+  const conditions: string[] = []
   const params: (string | number)[] = []
 
   if (tag) {
@@ -136,7 +148,7 @@ export function listPapers(opts: ListPapersOptions = {}): { papers: PaperRow[]; 
     params.push(`%${q}%`, `%${q}%`)
   }
 
-  const where = `WHERE ${conditions.join(' AND ')}`
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
   const orderBy = sort === 'views' ? 'views DESC' : 'submitted_at DESC'
   const offset = (page - 1) * limit
 

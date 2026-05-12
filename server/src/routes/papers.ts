@@ -8,6 +8,7 @@ import { config } from '../lib/env'
 import {
   insertPaper,
   getPaperByCid,
+  getPaperBySha256,
   incrementViews,
   listPapers,
   setPaperTxPending,
@@ -137,6 +138,16 @@ papers.post('/', walletAuth(), async (c) => {
   try {
     const buffer = new Uint8Array(await file.arrayBuffer())
     const fileHash = await sha256Hex(buffer)
+    const existing = getPaperBySha256(fileHash)
+    if (existing) {
+      return c.json(
+        {
+          success: false,
+          error: 'This paper file has already been submitted.',
+        },
+        409
+      )
+    }
 
     const { cid } = await pinFileToIPFS({
       filename: file.name || `paper-${Date.now()}.pdf`,
@@ -153,7 +164,7 @@ papers.post('/', walletAuth(), async (c) => {
       authors,
       tags,
       review_mode: reviewMode,
-      status: 'Awaiting Review',
+      status: 'Under Review',
       confirmation_status: 'pending_anchor',
       tx_hash: null,
       anchored_at: null,
@@ -175,9 +186,13 @@ papers.post('/', walletAuth(), async (c) => {
       },
     })
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    console.error('[papers] POST error:', msg)
-    return c.json({ success: false, error: msg }, 500)
+    console.error('[papers] POST error', {
+      operation: 'submitPaper',
+      submitter,
+      timestamp: new Date().toISOString(),
+      rawError: err instanceof Error ? err.message : String(err),
+    })
+    return c.json({ success: false, error: 'Paper submission failed. Please try again.' }, 500)
   }
 })
 
